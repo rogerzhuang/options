@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Request Stock and Option Prices</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  </head>
+  <body class="bg-light py-5">
+    <div class="container">
+      <div class="row justify-content-center">
+        <div class="col-md-6">
+          <h2 class="mb-4">Enter Details to Request Prices</h2>
+          <form id="stockPriceForm">
+            <!-- Stock Price Input -->
+            <div class="mb-3">
+              <label for="stock_ticker" class="form-label">Stock Ticker:</label>
+              <input
+                type="text"
+                id="stock_ticker"
+                name="stock_ticker"
+                class="form-control"
+                required
+              />
+            </div>
+            <div class="mb-3">
+              <label for="trade_date" class="form-label">Trade Date:</label>
+              <input
+                type="date"
+                id="trade_date"
+                name="trade_date"
+                class="form-control"
+                required
+              />
+            </div>
+            <div class="mb-3">
+              <label for="stock_price" class="form-label"
+                >Stock Price (display only):</label
+              >
+              <input
+                type="text"
+                id="stock_price"
+                name="stock_price"
+                class="form-control"
+                disabled
+              />
+            </div>
+            <button type="submit" class="btn btn-primary">
+              Fetch Stock Price and IV Surface
+            </button>
+          </form>
+
+          <!-- Plotting Area -->
+          <div class="col-lg-12 col-md-12 col-sm-12" style="padding: 0">
+            <div id="plotDiv" class="mt-4" style="width: 100%"></div>
+          </div>
+
+          <form id="optionPriceForm" class="mt-4" style="display: none">
+            <div class="mb-3">
+              <label for="input_stock_price" class="form-label"
+                >Input Stock Price:</label
+              >
+              <input
+                type="number"
+                step="0.01"
+                id="input_stock_price"
+                name="input_stock_price"
+                class="form-control"
+                required
+              />
+            </div>
+            <!-- Option Price Input -->
+            <div class="mb-3">
+              <label for="option_type" class="form-label">Option Type:</label>
+              <select
+                id="option_type"
+                name="option_type"
+                class="form-control"
+                required
+              >
+                <option value="call">Call</option>
+                <option value="put">Put</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="expiry_date" class="form-label">Expiry Date:</label>
+              <input
+                type="date"
+                id="expiry_date"
+                name="expiry_date"
+                class="form-control"
+                required
+              />
+            </div>
+            <div class="mb-3">
+              <label for="strike_price" class="form-label">Strike Price:</label>
+              <input
+                type="number"
+                step="0.01"
+                id="strike_price"
+                name="strike_price"
+                class="form-control"
+                required
+              />
+            </div>
+            <div class="mb-3">
+              <label for="option_price" class="form-label"
+                >Option Price (display only):</label
+              >
+              <input
+                type="text"
+                id="option_price"
+                name="option_price"
+                class="form-control"
+                disabled
+              />
+            </div>
+            <button type="submit" class="btn btn-primary">
+              Calculate Option Price
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let ivSurfDataGlobal = null;
+
+      function resetFieldsAndHideElements() {
+        document.getElementById("stock_price").value = "";
+        document.getElementById("optionPriceForm").style.display = "none";
+        document.getElementById("plotDiv").innerHTML = "";
+        ivSurfDataGlobal = null;
+      }
+
+      async function fetchOptionPrice(
+        ivSurfData,
+        tradeDate,
+        price,
+        optionType,
+        expiryDate,
+        strike
+      ) {
+        const response = await fetch("/calculate_option_price", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            iv_surf: ivSurfData,
+            trade_date: tradeDate,
+            price,
+            option_type: optionType,
+            expiry_date: expiryDate,
+            strike,
+          }),
+        });
+        const data = await response.json();
+        console.log(data);
+        return data.option_price.toFixed(3);
+      }
+
+      async function fetchIvSurfaceData(ivSurfData) {
+        const response = await fetch("/get_iv_surface_data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ iv_surf: ivSurfData }),
+        });
+        const data = await response.json();
+        console.log(data);
+        plotIvSurface(data);
+      }
+
+      function plotIvSurface(data) {
+        const plotDiv = document.getElementById("plotDiv");
+        const plotData = [
+          {
+            x: data.Y,
+            y: data.X,
+            z: data.Z,
+            type: "surface",
+            colorscale: "Viridis",
+            colorbar: { thickness: 15 }, // Adjust colorbar thickness
+          },
+        ];
+        const layout = {
+          title: {
+            text: "Implied Volatility Surface",
+            font: { size: 16 },
+            xref: "paper",
+            x: 0.5, // Center title
+            y: 0.9,
+          },
+          margin: { t: 30, b: 30, l: 60, r: 60 }, // Adjust margin to fit title and labels
+          scene: {
+            xaxis: {
+              title: "Time to Expiry (T)",
+              titlefont: { size: 12 },
+            },
+            yaxis: {
+              title: "Strike Ratio (K/S)",
+              titlefont: { size: 12 },
+              autorange: "reversed",
+            },
+            zaxis: {
+              title: "Implied Volatility (IV)",
+              titlefont: { size: 12 },
+            },
+            aspectratio: { x: 0.85, y: 0.85, z: 0.65 }, // Adjust aspect ratio to make plot look less stretched
+            camera: {
+              eye: { x: -1.5, y: -0.8, z: 0.8 },
+            },
+          },
+          width: plotDiv.clientWidth,
+          height: plotDiv.clientHeight,
+        };
+        const config = { responsive: true };
+        Plotly.newPlot(plotDiv, plotData, layout, config);
+      }
+
+      document
+        .getElementById("stockPriceForm")
+        .addEventListener("submit", async function (e) {
+          e.preventDefault();
+
+          // Get values from the form
+          const stockTicker = document.getElementById("stock_ticker").value;
+          const tradeDate = document.getElementById("trade_date").value;
+
+          // Fetch stock price
+          let response = await fetch("/get_stock_price", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tickers: [stockTicker],
+              start_date: tradeDate,
+              end_date: tradeDate,
+            }),
+          });
+          let data = await response.json();
+          document.getElementById("stock_price").value =
+            data[stockTicker][tradeDate]["close"];
+
+          // Fetch IV Surface data and plot
+          response = await fetch("/get_iv_surfs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tickers: [stockTicker],
+              start_date: tradeDate,
+              end_date: tradeDate,
+            }),
+          });
+          data = await response.json();
+          console.log(data);
+
+          // Store iv_surf data in global variable
+          ivSurfDataGlobal = data[stockTicker][tradeDate];
+
+          await fetchIvSurfaceData(ivSurfDataGlobal);
+
+          // Display the next form for option price input
+          document.getElementById("optionPriceForm").style.display = "block";
+        });
+
+      document
+        .getElementById("optionPriceForm")
+        .addEventListener("submit", async function (e) {
+          e.preventDefault();
+
+          const tradeDate = document.getElementById("trade_date").value;
+          const stockPrice = parseFloat(
+            document.getElementById("input_stock_price").value
+          );
+          const optionType = document.getElementById("option_type").value;
+          const expiryDate = document.getElementById("expiry_date").value;
+          const strikePrice = parseFloat(
+            document.getElementById("strike_price").value
+          );
+
+          // Fetch option price
+          const optionPrice = await fetchOptionPrice(
+            ivSurfDataGlobal,
+            tradeDate,
+            stockPrice,
+            optionType,
+            expiryDate,
+            strikePrice
+          );
+          document.getElementById("option_price").value = optionPrice;
+        });
+
+      // Clear stuffs when stock ticker or trade date is revised
+      document
+        .getElementById("stock_ticker")
+        .addEventListener("input", resetFieldsAndHideElements);
+      document
+        .getElementById("trade_date")
+        .addEventListener("input", resetFieldsAndHideElements);
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.min.js"></script>
+  </body>
+</html>
