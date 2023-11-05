@@ -8,7 +8,8 @@ import config
 def create_app():
     app = Flask(__name__)
     app.socketio = SocketIO(app)
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'mssql+pyodbc://{config.DB_USER}:{config.DB_PASSWORD}@{config.DB_SERVER}/{config.DB_NAME}?driver=SQL+Server'
+    driver_name = "ODBC Driver 17 for SQL Server"
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'mssql+pyodbc://{config.DB_USER}:{config.DB_PASSWORD}@{config.DB_SERVER}/{config.DB_NAME}?driver={driver_name}'
 
     db.init_app(app)
     return app

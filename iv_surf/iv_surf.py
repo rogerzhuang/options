@@ -14,7 +14,7 @@ r = 0.01  # Risk-free rate
 def black_scholes(S, K, T, r, sigma, option_type='call'):
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
-    
+
     if option_type == 'call':
         return S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
     else:
@@ -41,11 +41,13 @@ def implied_volatility(option_price, S, K, T, r, option_type='call'):
 
 def get_iv_surf(ticker, trade_date):
     # Connect to the database
-    conn = pymssql.connect(server=config.DB_SERVER, user=config.DB_USER, password=config.DB_PASSWORD, database=config.DB_NAME)
+    conn = pymssql.connect(server=config.DB_SERVER, user=config.DB_USER,
+                           password=config.DB_PASSWORD, database=config.DB_NAME)
     cursor = conn.cursor()
 
     # Retrieve stock price on trade_date
-    cursor.execute(f"SELECT [close] FROM hist_price_1d WHERE ticker = '{ticker}' AND exch_time = '{trade_date}'")
+    cursor.execute(
+        f"SELECT [close] FROM hist_price_1d WHERE ticker = '{ticker}' AND exch_time = '{trade_date}'")
     S = cursor.fetchone()[0]
 
     # Retrieve data for the stock and its options
@@ -53,7 +55,7 @@ def get_iv_surf(ticker, trade_date):
         FROM options o
         JOIN hist_price_1d h ON o.ticker = h.ticker
         JOIN securities s ON o.ticker = s.ticker
-        WHERE s.underlying_ticker = '{ticker}' AND h.exch_time = '{trade_date}' AND o.expiry > '{trade_date}
+        WHERE s.underlying_ticker = '{ticker}' AND h.exch_time = '{trade_date}' AND o.expiry > '{trade_date}'
         """)
     data = cursor.fetchall()
     conn.close()
@@ -64,7 +66,8 @@ def get_iv_surf(ticker, trade_date):
         _, expiry, strike, option_price, option_type = row
         # Filter for OTM puts and calls
         if (option_type == 'put' and strike < S or option_type == 'call' and strike > S):
-            T = (expiry - datetime.strptime(trade_date, '%Y-%m-%d').date()).days / 365.0
+            T = (expiry - datetime.strptime(trade_date,
+                 '%Y-%m-%d').date()).days / 365.0
             iv = implied_volatility(option_price, S, strike, T, r, option_type)
             if iv is not None:
                 strike_ratio = strike / S  # Store strike as a ratio of stock price
@@ -74,13 +77,14 @@ def get_iv_surf(ticker, trade_date):
     strike_ratios, Ts, ivs = zip(*iv_data)
     points = list(zip(strike_ratios, Ts))
     iv_surface = CloughTocher2DInterpolator(points, ivs)
-    
+
     return iv_surface
 
 
 def plot_iv_surf(iv_surface):
     # Create a meshgrid for visualization
-    strike_ratios = np.linspace(0.8, 1.2, 100)  # Representing 80% to 120% of stock price
+    # Representing 80% to 120% of stock price
+    strike_ratios = np.linspace(0.8, 1.2, 100)
     T_range = np.linspace(1/365, 28/365, 100)
     X, Y = np.meshgrid(strike_ratios, T_range)
     Z = iv_surface(X, Y)
@@ -98,13 +102,14 @@ def plot_iv_surf(iv_surface):
 
 
 def get_option_price(trade_date, iv_surf, price, option_type, expiry_date, strike):
-    T = (datetime.strptime(expiry_date, '%Y-%m-%d').date() - datetime.strptime(trade_date, '%Y-%m-%d').date()).days / 365.0
+    T = (datetime.strptime(expiry_date, '%Y-%m-%d').date() -
+         datetime.strptime(trade_date, '%Y-%m-%d').date()).days / 365.0
     strike_ratio = strike / price  # Provide strike as a ratio of stock price
     iv = iv_surf(strike_ratio, T)
 
     # Calculate the option price using the interpolated IV
     option_price = black_scholes(price, strike, T, r, iv, option_type)
-    
+
     return option_price
 
 
@@ -137,9 +142,12 @@ if __name__ == "__main__":
 
     iv_surf = get_iv_surf('SHEL', '2023-07-11')
     # plot_iv_surf(iv_surf)
-    option_price1 = get_option_price(trade_date1, iv_surf1, price1, option_type, expiry_date, strike)
-    option_price2 = get_option_price(trade_date2, iv_surf2, price2, option_type, expiry_date, strike)
-    option_price3 = get_option_price(trade_date3, iv_surf3, price3, option_type, expiry_date, strike)
+    option_price1 = get_option_price(
+        trade_date1, iv_surf1, price1, option_type, expiry_date, strike)
+    option_price2 = get_option_price(
+        trade_date2, iv_surf2, price2, option_type, expiry_date, strike)
+    option_price3 = get_option_price(
+        trade_date3, iv_surf3, price3, option_type, expiry_date, strike)
     print(f"The price on {trade_date1} for the {option_type} option with expiry on {expiry_date} and strike {strike} is: ${option_price1:.2f}")
     print(f"The price on {trade_date2} for the {option_type} option with expiry on {expiry_date} and strike {strike} is: ${option_price2:.2f}")
     print(f"The price on {trade_date3} for the {option_type} option with expiry on {expiry_date} and strike {strike} is: ${option_price3:.2f}")
