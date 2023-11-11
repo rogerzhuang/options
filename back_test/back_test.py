@@ -1,7 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 import pandas_market_calendars as mcal
-from config import DB_SERVER, DB_USER, DB_PASSWORD, DB_NAME
 from iv_surf.iv_surf import get_option_price
 from datetime import date, timedelta, datetime
 import matplotlib.pyplot as plt
@@ -10,11 +9,21 @@ import numpy as np
 import requests
 import pickle
 import base64
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+db_user = os.environ.get('DB_USER')
+db_password = os.environ.get('DB_PASSWORD')
+db_server = os.environ.get('DB_SERVER')
+db_name = os.environ.get('DB_NAME')
 
 Base = declarative_base()
 
-DATABASE_URL = f'mssql+pyodbc://{DB_USER}:{DB_PASSWORD}@{DB_SERVER}/{DB_NAME}?\
-    driver=SQL+Server'
+driver_name = "ODBC Driver 17 for SQL Server"
+DATABASE_URL = f'mssql+pyodbc://{db_user}:{db_password}@{db_server}/{db_name}?\
+    driver={driver_name}'
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -200,6 +209,6 @@ def backtest_strategy(start_date, end_date):
     plt.show()
 
 
-start_date = date(2021, 10, 15)
+start_date = date(2023, 10, 13)
 end_date = date(2023, 10, 27)
 backtest_strategy(start_date, end_date)

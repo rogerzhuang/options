@@ -5,7 +5,15 @@ from scipy.interpolate import CloughTocher2DInterpolator
 from scipy.optimize import newton, brentq
 from datetime import datetime
 import matplotlib.pyplot as plt
-import config
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+db_user = os.environ.get('DB_USER')
+db_password = os.environ.get('DB_PASSWORD')
+db_server = os.environ.get('DB_SERVER')
+db_name = os.environ.get('DB_NAME')
 
 r = 0.01  # Risk-free rate
 
@@ -41,8 +49,8 @@ def implied_volatility(option_price, S, K, T, r, option_type='call'):
 
 def get_iv_surf(ticker, trade_date):
     # Connect to the database
-    conn = pymssql.connect(server=config.DB_SERVER, user=config.DB_USER,
-                           password=config.DB_PASSWORD, database=config.DB_NAME)
+    conn = pymssql.connect(server=db_server, user=db_user,
+                           password=db_password, database=db_name)
     cursor = conn.cursor()
 
     # Retrieve stock price on trade_date
