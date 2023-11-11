@@ -36,20 +36,21 @@ def get_largest_text_block(soup):
     return None, None
 
 
-URL = 'https://www.zacks.com/stock/news/2172009/sunnova-energy-nova-reports-q3-loss-tops-revenue-estimates'
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-}
-response = requests.get(URL, headers=headers)
-if response.status_code != 200:
-    print("Error fetching the webpage.")
-else:
-    soup = BeautifulSoup(response.content, 'html.parser')
-
-    # ... after fetching the content and creating the soup object
-
-    largest_text, tag = get_largest_text_block(soup)
-    if largest_text:
-        print(largest_text)
+if __name__ == '__main__':
+    URL = 'https://www.zacks.com/stock/news/2172009/sunnova-energy-nova-reports-q3-loss-tops-revenue-estimates'
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    response = requests.get(URL, headers=headers)
+    if response.status_code != 200:
+        print("Error fetching the webpage.")
     else:
-        print("Error extracting the content.")
+        soup = BeautifulSoup(response.content, 'html.parser')
+
+        # ... after fetching the content and creating the soup object
+
+        largest_text, tag = get_largest_text_block(soup)
+        if largest_text:
+            print(largest_text)
+        else:
+            print("Error extracting the content.")
