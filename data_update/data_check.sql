@@ -11,6 +11,10 @@ inner join options o on o.ticker = s.ticker
 where s.underlying_ticker = 'KEY' and o.expiry = '2023-03-03'
 order by expiry, option_type, strike
 
-select news.title, news.content, securities.ticker from news inner join news_securities on news.id = news_securities.news_id
-inner join securities on news_securities.ticker = securities.ticker
-where securities.ticker = 'AAPL'
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-11-06' and n.exch_time <= '2023-11-09'
+and n.author = 'Zacks Equity Research' and securities.ticker in ('SE', 'M', 'AAP', 'MPW', 'SIRI', 'XPEV', 'LCID', 'BBWI', 'SOFI', 'RIVN', 'NIO', 'PANW', 'COIN', 'TGT', 'XP', 'SEDG', 'RBLX', 'SMCI', 'JD', 'BILI', 'WSM', 'CHWY', 'BILL', 'DKNG', 'GME', 'PARA', 'MRNA', 'SNAP', 'PLTR', 'ENPH')
+group by securities.ticker
+order by sentiment

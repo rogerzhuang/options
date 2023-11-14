@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Ensure proper rendering and touch zooming -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <title>Options Research Web App</title>
+    <style>
+      @keyframes gradient {
+        0% {
+          background-position: 0% 50%;
+        }
+        50% {
+          background-position: 100% 50%;
+        }
+        100% {
+          background-position: 0% 50%;
+        }
+      }
+
+      body,
+      html {
+        height: 100%;
+        margin: 0;
+        background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+        background-size: 400% 400%;
+        animation: gradient 15s ease infinite;
+        font-family: "Arial", sans-serif;
+      }
+
+      .container {
+        background: rgba(0, 0, 0, 0.75); /* Adjust opacity */
+        padding: 30px; /* Increase padding */
+        border-radius: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Add shadow for depth */
+        max-width: 800px; /* Adjust width as necessary */
+        margin: 80px auto; /* More margin at the top and bottom */
+        color: #ffffff;
+      }
+
+      h1,
+      h2 {
+        color: #ffffff;
+      }
+
+      .nav-link {
+        color: #ffffff !important; /* Ensure nav links are white */
+      }
+
+      .btn {
+        margin-right: 5px; /* Add spacing between buttons */
+      }
+
+      /* Responsive adjustments */
+      @media (max-width: 768px) {
+        .container {
+          padding: 15px; /* Reduce padding on smaller screens */
+          margin-top: 20px; /* Reduce margin on smaller screens */
+        }
+        nav .navbar-brand img {
+          height: 40px; /* Reduce logo size on smaller screens */
+        }
+        .btn {
+          margin-bottom: 10px; /* Add space below buttons on smaller screens */
+          width: auto; /* Auto width based on content */
+          max-width: 80%; /* Max button width */
+          display: block; /* Block display to take up width */
+          margin-left: auto; /* Center align buttons */
+          margin-right: auto; /* Center align buttons */
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container text-center">
+      <!-- Navigation Bar (if you decide to go multi-page) -->
+      <nav class="navbar navbar-expand-lg navbar-dark">
+        <a class="navbar-brand" href="/"
+          ><img
+            src="{{ url_for('static', filename='logo.png') }}"
+            alt="Option Research Logo"
+            style="height: 50px"
+        /></a>
+        <button
+          class="navbar-toggler"
+          type="button"
+          data-toggle="collapse"
+          data-target="#navbarNav"
+          aria-controls="navbarNav"
+          aria-expanded="false"
+          aria-label="Toggle navigation"
+        >
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav">
+            <li class="nav-item active">
+              <a class="nav-link" href="#"
+                >Home <span class="sr-only">(current)</span></a
+              >
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#">Features</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#">Documentation</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#">Contact</a>
+            </li>
+          </ul>
+        </div>
+      </nav>
+
+      <h1 class="my-4">Options Research</h1>
+
+      <!-- Update Data Section -->
+      <div class="row my-4">
+        <div class="col-12">
+          <h2>Update Data</h2>
+          <p>Asyncronous concurrent retrieval of various data...</p>
+          <a href="/update/tickers" class="btn btn-primary">Update Tickers</a>
+          <a href="/update/prices" class="btn btn-primary">Update Prices</a>
+          <a href="/update/iv_surfs" class="btn btn-primary"
+            >Update IV Surfaces</a
+          >
+          <a href="/update/news" class="btn btn-primary"
+            >Update News Articles</a
+          >
+        </div>
+      </div>
+
+      <!-- View Data Section -->
+      <div class="row my-4">
+        <div class="col-12">
+          <h2>View Data</h2>
+          <p>Visualize IV surface, historical prices, news articles...</p>
+          <a href="/view/price" class="btn btn-success"
+            >View Prices & IV Surface</a
+          >
+          <a href="/view/news" class="btn btn-success">View News Articles</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+  </body>
+</html>

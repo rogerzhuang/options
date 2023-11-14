@@ -569,7 +569,7 @@ async def get_sentiment_score(content, ticker, max_retries=5):
                 sentiment_score = int(match.group())
                 # Ensure the score is within the expected range
                 if 1 <= sentiment_score <= 100:
-                    print(f"Sentiment score: {sentiment_score}")
+                    print(f"Sentiment score for {ticker}: {sentiment_score}")
                     return sentiment_score
             # If no integer is found or the score is out of range, handle the error
             raise ValueError
@@ -703,23 +703,27 @@ async def populate_news():
             News.id.in_(all_article_ids)).all()
         existing_tickers = Securities.query.filter(
             Securities.ticker.in_(all_tickers)).all()
+        existing_news_securities = NewsSecurities.query.filter(
+            NewsSecurities.news_id.in_(all_article_ids)).all()
 
         # Create sets of existing article IDs for efficient look-up
         existing_article_ids = {article.id for article in existing_articles}
-
         # Create a dictionary to map ticker symbols to Securities objects
         ticker_to_security = {
             ticker.ticker: ticker for ticker in existing_tickers}
+        # Create a set of (news_id, ticker) tuples for efficient look-up
+        existing_news_securities_set = {
+            (ns.news_id, ns.ticker) for ns in existing_news_securities}
 
         # Insert the news data into the database
         for article, content in contents:
-            if article['id'] not in existing_article_ids:
-                # Create a new News entry if the article does not exist
-                published_utc = pytz.utc.localize(datetime.strptime(
-                    article['published_utc'], '%Y-%m-%dT%H:%M:%SZ'))
-                exch_time = published_utc.astimezone(timezone(
-                    'US/Eastern')).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
+            published_utc = pytz.utc.localize(datetime.strptime(
+                article['published_utc'], '%Y-%m-%dT%H:%M:%SZ'))
+            exch_time = published_utc.astimezone(timezone(
+                'US/Eastern')).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
 
+            # Check if the article exists, if not, create a new News entry
+            if article['id'] not in existing_article_ids:
                 news_entry = News(
                     id=article['id'],
                     exch_time=exch_time,
@@ -731,11 +735,15 @@ async def populate_news():
                     content=content
                 )
                 db.session.add(news_entry)
+                # Update the existing_article_ids set to include the new article
+                existing_article_ids.add(article['id'])
 
-                # Add related tickers to the news_entry
-                for ticker in set(article['tickers']):
-                    security_entry = ticker_to_security.get(ticker)
-                    if security_entry:
+            # Add related tickers to the news_entry
+            for ticker in set(article['tickers']):
+                security_entry = ticker_to_security.get(ticker)
+                if security_entry:
+                    # Check if the (news_id, ticker) pair already exists in the set
+                    if (article['id'], ticker) not in existing_news_securities_set:
                         # Get the sentiment score for the article with respect to the ticker
                         print(f"Getting sentiment score for {ticker}...")
                         sentiment_score = await get_sentiment_score(content, ticker)
@@ -747,11 +755,15 @@ async def populate_news():
                             sentiment=sentiment_score
                         )
                         db.session.add(news_security_entry)
+                        # Add the new pair to the set to prevent duplicate checks
+                        existing_news_securities_set.add(
+                            (article['id'], ticker))
 
-                # Update the existing_article_ids set to include the new article
-                existing_article_ids.add(article['id'])
-
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError as e:
+            db.session.rollback()  # Rollback the session on IntegrityError
+            return jsonify({'status': 'error', 'message': 'Database integrity error occurred.'}), 500
 
     return jsonify({'status': 'success', 'message': 'News data updated.'})
 
@@ -819,3 +831,8 @@ def get_news():
         })
 
     return jsonify(organized_articles)
+
+
+@main.route('/', methods=['GET'])
+def landing_page():
+    return render_template('landing_page.html')
