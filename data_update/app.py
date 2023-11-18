@@ -28,4 +28,4 @@ app.register_blueprint(main_blueprint)
 
 
 if __name__ == '__main__':
-    app.socketio.run(app, debug=True)
+    app.socketio.run(app, port=8000, debug=True)
