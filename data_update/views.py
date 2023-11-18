@@ -385,8 +385,10 @@ def populate_iv_surfs():
 
     for ticker in tickers:
         # Check which valid_days already have data for the ticker
-        existing_dates = [iv_surf.exch_time.date()
-                          for iv_surf in IvSurf.query.filter_by(ticker=ticker).all()]
+        existing_dates_query = IvSurf.query.with_entities(
+            IvSurf.exch_time).filter_by(ticker=ticker).all()
+        existing_dates = [date.exch_time.date()
+                          for date in existing_dates_query]
 
         days_to_update = [
             day for day in valid_days if day not in existing_dates]

@@ -18,10 +18,6 @@ def create_app():
     app.socketio = SocketIO(app)
     driver_name = "ODBC Driver 17 for SQL Server"
     app.config['SQLALCHEMY_DATABASE_URI'] = f'mssql+pyodbc://{db_user}:{db_password}@{db_server}/{db_name}?driver={driver_name}'
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        # Time in seconds
-        'connect_args': {"options": "-c statement_timeout=1000"}
-    }
 
     db.init_app(app)
     return app
