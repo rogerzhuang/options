@@ -65,9 +65,9 @@ class News(db.Model):
     exch_time = db.Column(db.DateTime)
     published_utc = db.Column(db.DateTime)
     publisher_name = db.Column(db.String(255))
-    title = db.Column(db.String(255))
+    title = db.Column(db.Text)
     author = db.Column(db.String(255))
-    article_url = db.Column(db.String(255))
+    article_url = db.Column(db.Text)
     content = db.Column(db.Text)
     tickers = db.relationship(
         'NewsSecurities', back_populates='news', lazy=True)

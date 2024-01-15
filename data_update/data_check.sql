@@ -6,7 +6,7 @@ order by expiry, option_type, strike, exch_time
 
 select * from hist_price_1d where ticker = 'MSFT' and exch_time = '2023-11-03 00:00:00.000'
 
-select * from options where ticker like '%AAPL%' and expiry = '2023-12-15'
+select * from Polygon.dbo.options where ticker like '%AAPL%' and expiry = '2023-12-15'
 
 select s.ticker, o.option_type, o.strike, o.expiry from securities s
 inner join options o on o.ticker = s.ticker
@@ -40,3 +40,136 @@ and securities.ticker in ('SE','PLUG','M','AAP','SIRI','BBWI','LCID','MPW','XPEV
 group by securities.ticker
 order by sentiment
 
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-11-13' and n.exch_time <= '2023-11-16'
+-- and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('YPF','PLUG','BURL','SIRI','MPW','ZM','DKS','LCID','NIO','XPEV','SOFI','NVDA','SMCI','RIVN','FUTU','BIDU','BBY','PSNY','ADSK','COIN','PARA','ROST','LI','GME','SEDG','GTLB','AAP','NCLH','CHWY','ENPH','MRNA','EDU',
+'SE','KMX','PLTR','KEY','U','WBD','ALB','BILL')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-11-20' and n.exch_time <= '2023-11-23'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('PLUG','PATH','OKTA','ASO','MPW','BILI','PDD','SNOW','ZS','NIO','DLTR','MRVL','XPEV','SIRI','GME','CRWD','LCID','ULTA','FUTU','SOFI','RIVN','DELL','ALB','IQ','WDAY','COIN','PLTR','SMCI','APA','CHWY','WBD','PARA','ENPH','AAP','NTAP','LI','KR','AA','VFC','SNAP')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-11-27' and n.exch_time <= '2023-11-30'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('GME','CHWY','GTLB','DOCU','PLUG','S','RH','MDB','NIO','MPW','SIRI','DG','LCID','XPEV','SOFI','RIVN','SEDG','COIN','BILI','LULU','KEY','NTAP','PARA','VFC','U','SMCI','KMX','HES','HOOD','YPF','ILMN','BILL','CELH','CPNG','ALB','ENPH','PLTR','MRNA','SE','ASO')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-12-04' and n.exch_time <= '2023-12-07'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('PLUG','PSNY','MPW','SIRI','LCID','GME','CHWY','YPF','COIN','SEDG','NTAP','HOOD','PARA','RIVN','XPEV','NIO','SOFI','NOC','TOST','ALB','M','XP','SRPT','ENPH','SMCI','NOK','PLTR','RKT','U','MRNA','ADBE','LEN','VFC','LI','X','ORCL','S','CAR','AA','CMA')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-12-11' and n.exch_time <= '2023-12-14'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('PLUG','LCID','SEDG','TOL','MPW','KMX','EDU','SIRI','CCL','NIO','XPEV','ENPH','RIVN','NTAP','SOFI','GME','COIN','RKT','CHWY','DOCU','HOOD','PLTR','PARA','CLF','AA','PATH','U','M','COF','SMCI','SRPT','ROKU','S','NKE','SNAP','FSLR','BIIB','SE','BBWI','AAP')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-10-16' and n.exch_time <= '2023-10-20'
+-- and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('SNAP','SRPT','MPW','ENPH','ALGN','SPOT','SEDG','PSNY','LCID','META','PLUG','HOG','XPEV','RCL','NIO','OKTA','CLF','RIVN','EDU','SMCI','CMG','URI','SOFI','YPF','GME','INTC','NCLH','AMZN','COIN','NOW','STX','PLTR','LUV','SPLK','CMA','TOST','NET','BILI','FSLR','ROKU')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-10-09' and n.exch_time <= '2023-10-12'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('MPW','SRPT','LCID','PSNY','SIRI','ISRG','CMA','PLUG','AA','NFLX','XPEV','NOK','SMCI','AAL','SEDG','ALLY','SOFI','SCHW','UAL','NIO','COIN','KEY','RIVN','TSLA','BILI','LRCX','LI','PLTR','EQT','CHWY','USB','ROKU','PARA','CCL','NET','NCLH','DFS','GTLB','AAP','WBD')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-10-02' and n.exch_time <= '2023-10-05'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('KGC','SRPT','PLUG','RIVN','WBA','MPW','SOFI','DPZ','SIRI','KEY','XPEV','GME','LCID','S','NIO','COIN','PLTR','SEDG','OKTA','ALLY','SMCI','PATH','CCL','BURL','RKT','GTLB','NET','BILI','RBLX','HOOD','DAL','ROKU','ENPH','TOST','BEKE','APA','CELH','EDU','CMA','FSLR')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-09-25' and n.exch_time <= '2023-09-28'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('MDT','SIRI','MPW','SRPT','NIO','LCID','RIVN','XPEV','NU','PLUG','GME','CCL','TSLA','COIN','PLTR','SOFI','S','NCLH','SMCI','CHWY','KEY','NET','DKNG','LI','WBD','RBLX','SEDG','ROKU','SNAP','ALLY','BILL','GTLB','T','U','CZR','CLF','SQ','ENPH','SE','SHOP')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-09-18' and n.exch_time <= '2023-09-21'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('KMX','CCL','MPW','PSNY','RIVN','XPEV','NIO','COIN','HOOD','LCID','IQ','SOFI','PLUG','NCLH','PLTR','SMCI','CHWY','GME','U','DKNG','TOST','NKE','MU','PARA','ROKU','SE','KEY','TSLA','GNRC','NET','SEDG','RBLX','BILI','PATH','CELH','AA','DDOG','SQ','CMA','ENPH')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-09-11' and n.exch_time <= '2023-09-14'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('HOG','PSNY','HSBC','MPW','PINS','GME','XPEV','SIRI','LCID','NIO','PLUG','SNAP','FDX','COIN','SMCI','PATH','RIVN','U','PLTR','AGNC','SOFI','KEY','BILI','ROKU','F','GTLB','ALLY','NET','CCL','TFC','CSX','AAP','CHWY','RBLX','Z','DKNG','LI','AAL','FUTU','CAR')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-12-09' and n.exch_time <= '2023-12-22'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('PSNY','PLUG','HES','COIN','SEDG','NIO','LCID','BILI','SIRI','KEY','YPF','IQ','XPEV','CHWY','SOFI','GME','MPW','RKT','HOOD','SMCI','ENPH','RIVN','U','S','PARA','EDU','SRPT','VFC','CZR','DKS','AR','SE','PATH','AA','BILL','X','NCLH','TOST','ROKU','BROS','FSLR','FUTU','KGC','ALB','CCL','JD','AAP','GTLB','RH','SNAP')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-12-16' and n.exch_time <= '2023-12-29'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('PLUG','WBA','COIN','LCID','MPW','NIO','RIVN','XPEV','PATH','SEDG','BILI','SIRI','SOFI','GME','AA','CHWY','ENPH','SE','U','SMCI','HOOD','ALB','CCL','WBD','BP','AAP','CELH','ROKU','FUTU','TSLA','MRNA','PLTR','SRPT','PBR','EDU','PDD','CLF','LI','PARA','SQ','AGNC','NCLH','ISRG','URI','DKNG','AAL','FSLR','RH','RRC','JD')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2023-12-23' and n.exch_time <= '2024-01-05'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('MPW','PLUG','COIN','SRPT','LCID','X','CROX','XPEV','SEDG','SOFI','NIO','MRNA','RIVN','SWN','ILMN','AR','BILI','ENPH','HOOD','CHWY','CELH','AA','GME','U','VFC','YPF','ALB','ROKU','SE','WYNN','SNAP','ET','PLTR','BILL','PARA','SMCI','NCLH','ISRG','SQ','WBD','LI','AAP','DAL','AGNC','RH','Z','CCJ','AAL','EDU','CZR')
+group by securities.ticker
+order by sentiment
+
+SELECT n.title
+FROM news n 
+INNER JOIN news_securities ns ON n.id = ns.news_id
+INNER JOIN securities ON ns.ticker = securities.ticker
+WHERE n.exch_time >= '2023-12-23' AND n.exch_time <= '2024-01-05'
+AND securities.ticker = 'CROX';

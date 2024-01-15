@@ -58,7 +58,7 @@ def instance_to_dict(instance):
 
 
 MAX_CONCURRENT_REQUESTS = 2000  # Adjust this based on what you find optimal
-RETRY_ATTEMPTS = 5
+RETRY_ATTEMPTS = 6
 REQUEST_TIMEOUT = 10  # seconds
 timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
 BATCH_SIZE = 2000  # Adjust based on your needs
@@ -642,7 +642,7 @@ async def get_content(session, url, semaphore):
             except (aiohttp.ClientError, aiohttp.ClientResponseError, asyncio.TimeoutError) as e:
                 if attempt < RETRY_ATTEMPTS - 1:
                     # Exponential backoff
-                    backoff_time = math.pow(2, attempt) * 0.2
+                    backoff_time = math.pow(2, attempt) * 1.0
                     print(
                         f"Attempt {attempt + 1}: Waiting {backoff_time} seconds before retrying for URL {url}")
                     await asyncio.sleep(backoff_time)
@@ -740,26 +740,28 @@ async def populate_news():
                 # Update the existing_article_ids set to include the new article
                 existing_article_ids.add(article['id'])
 
-            # Add related tickers to the news_entry
-            for ticker in set(article['tickers']):
-                security_entry = ticker_to_security.get(ticker)
-                if security_entry:
-                    # Check if the (news_id, ticker) pair already exists in the set
-                    if (article['id'], ticker) not in existing_news_securities_set:
-                        # Get the sentiment score for the article with respect to the ticker
-                        print(f"Getting sentiment score for {ticker}...")
-                        sentiment_score = await get_sentiment_score(content, ticker)
+            # Check for Zacks Investment Research publisher before adding sentiment
+            if article['publisher']['name'] == "Zacks Investment Research":
+                # Add related tickers to the news_entry
+                for ticker in set(article['tickers']):
+                    security_entry = ticker_to_security.get(ticker)
+                    if security_entry:
+                        # Check if the (news_id, ticker) pair already exists in the set
+                        if (article['id'], ticker) not in existing_news_securities_set:
+                            # Get the sentiment score for the article with respect to the ticker
+                            print(f"Getting sentiment score for {ticker}...")
+                            sentiment_score = await get_sentiment_score(content, ticker)
 
-                        # Create a NewsSecurities association object
-                        news_security_entry = NewsSecurities(
-                            news_id=article['id'],
-                            ticker=security_entry.ticker,
-                            sentiment=sentiment_score
-                        )
-                        db.session.add(news_security_entry)
-                        # Add the new pair to the set to prevent duplicate checks
-                        existing_news_securities_set.add(
-                            (article['id'], ticker))
+                            # Create a NewsSecurities association object
+                            news_security_entry = NewsSecurities(
+                                news_id=article['id'],
+                                ticker=security_entry.ticker,
+                                sentiment=sentiment_score
+                            )
+                            db.session.add(news_security_entry)
+                            # Add the new pair to the set to prevent duplicate checks
+                            existing_news_securities_set.add(
+                                (article['id'], ticker))
 
         try:
             db.session.commit()
