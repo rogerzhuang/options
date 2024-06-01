@@ -167,9 +167,61 @@ and securities.ticker in ('MPW','PLUG','COIN','SRPT','LCID','X','CROX','XPEV','S
 group by securities.ticker
 order by sentiment
 
-SELECT n.title
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2024-01-27' and n.exch_time <= '2024-02-09'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('CART','VFS','ROKU','TTD','TOST','SHOP','TWLO','COIN','ZI','DDOG','HOOD','GNRC','DKNG','ANET','CROX','CAR','ARM','LCID','ALB','Z','AFRM','DASH','CVNA','TAL','MSTR','RKT','AR','NIO','ABNB','XPEV','WAL','SMCI','BBIO','GDDY','W','APLS','RIVN','SONY','REGN','PLTR','CYTK','SNAP','SWN','ZION','SOFI','U','EDU','MRNA','MGM','XP')
+group by securities.ticker
+order by sentiment
+
+select securities.ticker, avg(ns.sentiment) as sentiment, count(*) as count
+from news n inner join news_securities ns on n.id = ns.news_id
+inner join securities on ns.ticker = securities.ticker
+where n.exch_time >= '2024-05-04' and n.exch_time <= '2024-05-17'
+and n.author = 'Zacks Equity Research' 
+and securities.ticker in ('VFS', 'ELF', 'VFC', 'X', 'XPEV', 'LCID', 'MSTR', 'SNOW', 'PANW', 'LI', 'SMCI', 'NVDA', 'BEKE', 'PDD', 'ZM', 'NIO', 'RIVN', 'NTES', 'XP', 'RKT', 'WHR', 'COIN', 'HOOD', 'AFRM', 'YPF', 'WDAY', 'TGT', 'TOST', 'CHWY', 'DELL', 'PARA', 'ROST', 'CART', 'VRT', 'ARM', 'CVNA', 'WBD', 'SOFI', 'TOL', 'NOK', 'S', 'TAL', 'NCLH', 'SNAP', 'CAH', 'DXCM', 'PATH', 'W', 'BBY', 'CAVA')
+group by securities.ticker
+order by sentiment
+
+SELECT n.title, n.exch_time, ns.sentiment, n.article_url, n.author, n.content
 FROM news n 
 INNER JOIN news_securities ns ON n.id = ns.news_id
 INNER JOIN securities ON ns.ticker = securities.ticker
-WHERE n.exch_time >= '2023-12-23' AND n.exch_time <= '2024-01-05'
-AND securities.ticker = 'CROX';
+WHERE n.exch_time >= '2024-03-29' AND n.exch_time <= '2024-05-02'
+AND securities.ticker = 'CVNA';
+
+select distinct publisher_name from news
+The Motley Fool
+
+SELECT TOP (1000) [id]
+      ,[exch_time]
+      ,[published_utc]
+      ,[publisher_name]
+      ,[title]
+      ,[author]
+      ,[article_url]
+      ,[content]
+  FROM [Polygon].[dbo].[news]
+  where exch_time >= '2024-05-10' and exch_time <= '2024-05-12'
+  and publisher_name = 'Zacks Investment Research' and content is null
+
+delete from news where id in 
+('l6cP3KqB9A3dXYd83BHMOzCObOVs6L0bx7RqFT6hBbY'
+)
+
+delete from news_securities where news_id in 
+('I3Mz0Rq0PMNt_0848eKv5dGma0CpPTTpH_6cfqbJsNE'
+)
+
+
+DELETE FROM news_securities
+WHERE EXISTS (
+    SELECT 1
+    FROM news
+    WHERE news.id = news_securities.news_id
+    AND news.exch_time >= '2024-05-03'
+    AND news.exch_time <= '2024-05-04'
+    AND news_securities.sentiment IS NULL
+);

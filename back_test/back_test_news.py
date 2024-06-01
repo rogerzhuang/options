@@ -4,6 +4,7 @@ from datetime import date, timedelta, datetime
 import pandas_market_calendars as mcal
 from models import News, NewsSecurities
 from high_iv import get_stock_list_with_high_put_iv
+# from high_iv_wfilter import filter_stocks_based_on_return
 from dotenv import load_dotenv
 import requests
 import os
@@ -26,6 +27,7 @@ def get_sentiment_scores(tickers, start_date, end_date, session):
         .filter(News.exch_time.between(start_date, end_date))
         .filter(NewsSecurities.ticker.in_(tickers))
         .filter(News.author == 'Zacks Equity Research')
+        # .filter(NewsSecurities.ticker.not_in(['PXD']))
         .group_by(NewsSecurities.ticker)
         .all())
     return {score.ticker: score.average_sentiment for score in sentiment_scores}
@@ -77,14 +79,18 @@ def calculate_returns(portfolio, trade_day, unwind_day):
                        for ticker in portfolio["long"]) / len(portfolio["long"])
     short_returns = sum((portfolio["short"][ticker][trade_day_str]['close_adj'] - short_prices_end[ticker][unwind_day_str]['close_adj']) / portfolio["short"][ticker][trade_day_str]['close_adj']
                         for ticker in portfolio["short"]) / len(portfolio["short"])
-
+    print(f"individual long returns: {[((long_prices_end[ticker][unwind_day_str]['close_adj'] - portfolio['long'][ticker][trade_day_str]['close_adj']) / portfolio['long'][ticker][trade_day_str]['close_adj']) for ticker in portfolio['long']]}")
+    print(f"individual short returns: {[((portfolio['short'][ticker][trade_day_str]['close_adj'] - short_prices_end[ticker][unwind_day_str]['close_adj']) / portfolio['short'][ticker][trade_day_str]['close_adj']) for ticker in portfolio['short']]}")
+    print(
+        f"Long returns: {long_returns:.2%}, Short returns: {short_returns:.2%}")
     total_return = long_returns + short_returns
     return total_return
 
 
-def backtest_sentiment_strategy(start_date, end_date, n_days_sentiment, k_stocks, m_weeks_hold, frac, session):
+def backtest_sentiment_strategy(start_date, end_date, n_days_sentiment, k_stocks, m_weeks_hold, p_weeks_delay, frac, session):
     nyse = mcal.get_calendar('NYSE')
-    extended_end_date = end_date + timedelta(weeks=m_weeks_hold + 1)
+    extended_end_date = end_date + \
+        timedelta(weeks=m_weeks_hold + p_weeks_delay)
     valid_days = nyse.valid_days(
         start_date=start_date, end_date=extended_end_date).date.tolist()
     backtest_days = nyse.valid_days(
@@ -98,11 +104,16 @@ def backtest_sentiment_strategy(start_date, end_date, n_days_sentiment, k_stocks
 
         # On each last trading day of the week, form the portfolio
         if day == last_trading_day:
-            print(f"Backtesting on {day}")
+            next_last_trading_day = get_last_trading_day_of_week(
+                last_trading_day + timedelta(weeks=1), valid_days)
             high_iv_stocks = get_stock_list_with_high_put_iv(
-                day, k_stocks, session)
+                day, 0.9, (next_last_trading_day - last_trading_day).days/365.0, k_stocks, session)
+            # high_iv_stocks = filter_stocks_based_on_return(
+            #     day, k_stocks, session)
+            # sentiment_scores = get_sentiment_scores(
+            #     high_iv_stocks, day - timedelta(days=n_days_sentiment), day, session)
             sentiment_scores = get_sentiment_scores(
-                high_iv_stocks, day - timedelta(days=n_days_sentiment), day, session)
+                high_iv_stocks, day - timedelta(days=n_days_sentiment//2), day + timedelta(days=n_days_sentiment//2), session)
             # Exclude items with None values
             sentiment_scores = {ticker: score for ticker,
                                 score in sentiment_scores.items() if score}
@@ -115,7 +126,7 @@ def backtest_sentiment_strategy(start_date, end_date, n_days_sentiment, k_stocks
                             for stock in sorted_stocks[-(len(sorted_stocks) // frac):]]
 
             # Set trade day as the next last trading day of the week
-            next_week = day + timedelta(weeks=1)
+            next_week = day + timedelta(weeks=p_weeks_delay)
             next_trade_day = get_last_trading_day_of_week(
                 next_week, valid_days)
             trades_to_execute.append(
@@ -142,24 +153,24 @@ if __name__ == '__main__':
 
     db_user = os.environ.get('DB_USER')
     db_password = os.environ.get('DB_PASSWORD')
-    db_server = os.environ.get('DB_SERVER')
+    db_server = os.environ.get('DB_SERVER').replace('\\\\', '\\')
     db_name = os.environ.get('DB_NAME')
 
     driver_name = "ODBC Driver 17 for SQL Server"
-    DATABASE_URL = f'mssql+pyodbc://{db_user}:{db_password}@{db_server}/{db_name}?\
-        driver={driver_name}'
+    DATABASE_URL = f'mssql+pyodbc://{db_user}:{db_password}@{db_server}/{db_name}?driver={driver_name}'
     engine = create_engine(DATABASE_URL)
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    start_date = date(2024, 1, 12)
-    end_date = date(2024, 1, 12)
+    start_date = date(2024, 5, 17)
+    end_date = date(2024, 5, 17)
     n_days_sentiment = 13
-    k_stocks = 50
+    k_stocks = 70
     m_weeks_hold = 1
+    p_weeks_delay = 1
     frac = 2
     returns = backtest_sentiment_strategy(
-        start_date, end_date, n_days_sentiment, k_stocks, m_weeks_hold, frac, session)
+        start_date, end_date, n_days_sentiment, k_stocks, m_weeks_hold, p_weeks_delay, frac, session)
     for ret in returns:
         print(
             f"Date: {ret['date'].strftime('%Y-%m-%d')}, Return: {ret['return']:.2%}")

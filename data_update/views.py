@@ -27,7 +27,7 @@ main = Blueprint('main', __name__)
 
 POLYGON_API_KEY = os.environ.get('POLYGON_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
-BASE_URL = 'https://api.polygon.io/v3/reference/options/contracts'
+POLYGON_BASE_URL = 'https://api.polygon.io/v3/reference/options/contracts'
 
 
 def get_last_trading_day_of_week(date, valid_days):
@@ -59,6 +59,7 @@ def instance_to_dict(instance):
 
 MAX_CONCURRENT_REQUESTS = 2000  # Adjust this based on what you find optimal
 RETRY_ATTEMPTS = 6
+MAX_WORKERS = 50
 REQUEST_TIMEOUT = 10  # seconds
 timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
 BATCH_SIZE = 2000  # Adjust based on your needs
@@ -174,7 +175,7 @@ async def populate_tickers():
                             'sort': 'strike_price',
                             'apiKey': POLYGON_API_KEY
                         }
-                        url = BASE_URL + "?" + \
+                        url = POLYGON_BASE_URL + "?" + \
                             "&".join(f"{key}={value}" for key,
                                      value in params.items())
                         task = fetch_data(session, url, semaphore)
@@ -559,7 +560,7 @@ async def get_sentiment_score(content, ticker, max_retries=5):
                         "content": prompt
                     }
                 ],
-                model="gpt-4-1106-preview",
+                model="gpt-4-turbo",
             )
 
             # Extract the sentiment score from the response
@@ -651,8 +652,6 @@ async def get_content(session, url, semaphore):
                     # Log the error, return None or handle it as appropriate
                     print(f"Failed to fetch content for URL {url}: {e}")
                     return None
-
-MAX_WORKERS = 50
 
 
 @main.route('/populate_news', methods=['POST'])

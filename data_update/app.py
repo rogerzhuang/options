@@ -9,7 +9,7 @@ load_dotenv()
 
 db_user = os.environ.get('DB_USER')
 db_password = os.environ.get('DB_PASSWORD')
-db_server = os.environ.get('DB_SERVER')
+db_server = os.environ.get('DB_SERVER').replace('\\\\', '\\')
 db_name = os.environ.get('DB_NAME')
 
 

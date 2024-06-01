@@ -11,25 +11,33 @@ import pickle
 import base64
 from dotenv import load_dotenv
 import os
+import json
 
 load_dotenv()
 
 db_user = os.environ.get('DB_USER')
 db_password = os.environ.get('DB_PASSWORD')
-db_server = os.environ.get('DB_SERVER')
+db_server = os.environ.get('DB_SERVER').replace('\\\\', '\\')
 db_name = os.environ.get('DB_NAME')
 
 Base = declarative_base()
 
 driver_name = "ODBC Driver 17 for SQL Server"
-DATABASE_URL = f'mssql+pyodbc://{db_user}:{db_password}@{db_server}/{db_name}?\
-    driver={driver_name}'
+DATABASE_URL = f'mssql+pyodbc://{db_user}:{db_password}@{db_server}/{db_name}?driver={driver_name}'
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 session = Session()
 
 CAPITAL = 1000000  # Total capital
 strike_ratio = 0.9
+
+
+# Helper function to check if a date falls within any of the specified ranges
+def is_date_in_range(date, date_ranges):
+    for range in date_ranges:
+        if range['start_date'] <= date <= range['end_date']:
+            return range['tickers']
+    return None
 
 
 def get_last_trading_day_of_week(date, valid_days):
@@ -46,7 +54,7 @@ def get_last_trading_day_of_future_week(asof_date, valid_days, days_ahead):
 def backtest_strategy(start_date, end_date):
     nyse = mcal.get_calendar('NYSE')
     valid_days = nyse.valid_days(
-        start_date=start_date, end_date=end_date + timedelta(days=28)).date.tolist()
+        start_date=start_date - timedelta(days=56), end_date=end_date + timedelta(days=28)).date.tolist()
     last_trading_days = list(
         set([get_last_trading_day_of_week(day, valid_days) for day in valid_days]))
     last_trading_days.sort()
@@ -61,6 +69,10 @@ def backtest_strategy(start_date, end_date):
     recovery_ratios = []
     holdings = {}
 
+    # Load the JSON file
+    with open('ticker_date_ranges.json', 'r') as file:
+        ticker_date_ranges = json.load(file)
+
     for day in backtest_days:
         print(f"Backtesting on {day}")
         stocks = (session.query(Stocks)
@@ -68,6 +80,12 @@ def backtest_strategy(start_date, end_date):
                   .join(HistPrice1D, HistPrice1D.ticker == Securities.ticker)
                   .filter(HistPrice1D.exch_time == day)
                   .all())
+
+        # Check if the current day falls within any date range and get the corresponding tickers
+        valid_tickers = is_date_in_range(
+            day.strftime('%Y-%m-%d'), ticker_date_ranges)
+        if valid_tickers is not None:
+            stocks = [stock for stock in stocks if stock.ticker in valid_tickers]
 
         next_week_expiry = get_last_trading_day_of_future_week(
             day, valid_days, 7)
@@ -88,9 +106,43 @@ def backtest_strategy(start_date, end_date):
         })
         stock_prices = response.json()
 
+        two_months_ago = day - timedelta(days=56)
+        two_months_ago_trading_day = get_last_trading_day_of_week(
+            two_months_ago, valid_days)
+
+        # Retrieve historical prices two months ago
+        str_two_months_ago = datetime.strftime(
+            two_months_ago_trading_day, '%Y-%m-%d')
+        response = requests.post('http://127.0.0.1:8000/get_stock_price', json={
+            'tickers': [stock.ticker for stock in stocks],
+            'start_date': str_two_months_ago,
+            'end_date': str_two_months_ago
+        })
+        historical_prices = response.json()
+
         valid_options_iv_check = []
         T = (next_week_expiry - day).days / 365.0
         for stock in stocks:
+            # Check if historical and current prices are available and valid
+            if stock.ticker not in historical_prices or stock.ticker not in stock_prices:
+                continue
+
+            past_price_data = historical_prices[stock.ticker].get(
+                str_two_months_ago)
+            current_price_data = stock_prices[stock.ticker].get(str_day)
+            if not past_price_data or not current_price_data:
+                continue
+
+            past_price = past_price_data['close_adj']
+            current_price = current_price_data['close_adj']
+
+            # Calculate return over the past two months
+            stock_return = (current_price - past_price) / past_price
+
+            # Check if the stock's return is less than 10%
+            if stock_return > 0.1:
+                continue
+
             if not iv_surfs[stock.ticker]:
                 continue
             iv_surf = pickle.loads(base64.b64decode(
@@ -104,6 +156,7 @@ def backtest_strategy(start_date, end_date):
 
         capital_per_option = CAPITAL / \
             len(valid_options_iv_check) if valid_options_iv_check else 0
+        capital_per_option = min(capital_per_option, CAPITAL / 20)
 
         tickers_to_check = [stock.ticker for stock in valid_options_iv_check]
         response = requests.post('http://127.0.0.1:8000/get_stock_price', json={
@@ -209,6 +262,6 @@ def backtest_strategy(start_date, end_date):
     plt.show()
 
 
-start_date = date(2023, 10, 13)
-end_date = date(2023, 10, 27)
+start_date = date(2021, 12, 17)
+end_date = date(2024, 1, 19)
 backtest_strategy(start_date, end_date)
