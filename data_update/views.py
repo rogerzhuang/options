@@ -28,6 +28,7 @@ main = Blueprint('main', __name__)
 POLYGON_API_KEY = os.environ.get('POLYGON_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 POLYGON_BASE_URL = 'https://api.polygon.io/v3/reference/options/contracts'
+BCOMP_BASE_URL = 'https://sred-5bef67007952.herokuapp.com'
 
 
 def get_last_trading_day_of_week(date, valid_days):
@@ -537,71 +538,127 @@ async def fetch_news(session, base_url, semaphore):
     return all_news
 
 
-# Function to get sentiment score using GPT-3.5 turbo model
-async def get_sentiment_score(content, ticker, max_retries=5):
-    async_openai_client = AsyncOpenAI(
-        api_key=OPENAI_API_KEY, timeout=6, max_retries=3)
+# # Function to get sentiment score using GPT-4 turbo model
+# async def get_sentiment_score(content, ticker, max_retries=5):
+#     async_openai_client = AsyncOpenAI(
+#         api_key=OPENAI_API_KEY, timeout=6, max_retries=3)
 
-    # Construct the prompt for the sentiment analysis
-    prompt = f"Calculate the integer sentiment score for the following news article related to the stock ticker {ticker} on a scale from 1 to 100, where 1 is most negative and 100 is most positive. IN YOUR RESPONSE, PLEASE PRODUCE THE SCORE ONLY:\n\n{content}"
+#     # Construct the prompt for the sentiment analysis
+#     prompt = f"Calculate the integer sentiment score for the following news article related to the stock ticker {ticker} on a scale from 1 to 100, where 1 is most negative and 100 is most positive. IN YOUR RESPONSE, PLEASE PRODUCE THE SCORE ONLY:\n\n{content}"
 
-    attempt = 0
-    while attempt < max_retries:
-        try:
-            # Call the OpenAI API
-            response = await async_openai_client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a sentiment analysis AI."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                model="gpt-4-turbo",
-            )
+#     attempt = 0
+#     while attempt < max_retries:
+#         try:
+#             # Call the OpenAI API
+#             response = await async_openai_client.chat.completions.create(
+#                 messages=[
+#                     {
+#                         "role": "system",
+#                         "content": "You are a sentiment analysis AI."
+#                     },
+#                     {
+#                         "role": "user",
+#                         "content": prompt
+#                     }
+#                 ],
+#                 model="gpt-4-turbo",
+#             )
 
-            # Extract the sentiment score from the response
-            sentiment_text = response.choices[0].message.content.strip()
-            # Use regular expression to find an integer in the response
-            match = re.search(r'\b\d+\b', sentiment_text)
-            if match:
-                # Convert the matched number to an integer
-                sentiment_score = int(match.group())
-                # Ensure the score is within the expected range
-                if 1 <= sentiment_score <= 100:
-                    print(f"Sentiment score for {ticker}: {sentiment_score}")
-                    return sentiment_score
-            # If no integer is found or the score is out of range, handle the error
-            raise ValueError
+#             # Extract the sentiment score from the response
+#             sentiment_text = response.choices[0].message.content.strip()
+#             # Use regular expression to find an integer in the response
+#             match = re.search(r'\b\d+\b', sentiment_text)
+#             if match:
+#                 # Convert the matched number to an integer
+#                 sentiment_score = int(match.group())
+#                 # Ensure the score is within the expected range
+#                 if 1 <= sentiment_score <= 100:
+#                     print(f"Sentiment score for {ticker}: {sentiment_score}")
+#                     return sentiment_score
+#             # If no integer is found or the score is out of range, handle the error
+#             raise ValueError
 
-        except openai.RateLimitError as e:
-            attempt += 1
-            wait_time = min(3 ** attempt, 60)
-            print(
-                f"Rate limit reached: {e}, waiting for {wait_time} seconds before retrying...")
-            await asyncio.sleep(wait_time)
-        except ValueError:
-            # If the sentiment score could not be parsed, return None
-            print(
-                f"Could not parse a valid sentiment score from the response for ticker {ticker}: {sentiment_text}")
-            break
-        except openai.APIError as e:
-            # Handle API error here, e.g. retry or log
-            print(f"OpenAI API returned an API Error: {e}")
-            break
-        except openai.APIConnectionError as e:
-            # Handle connection error here
-            print(f"Failed to connect to OpenAI API: {e}")
-            break
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-            break
+#         except openai.RateLimitError as e:
+#             attempt += 1
+#             wait_time = min(3 ** attempt, 60)
+#             print(
+#                 f"Rate limit reached: {e}, waiting for {wait_time} seconds before retrying...")
+#             await asyncio.sleep(wait_time)
+#         except ValueError:
+#             # If the sentiment score could not be parsed, return None
+#             print(
+#                 f"Could not parse a valid sentiment score from the response for ticker {ticker}: {sentiment_text}")
+#             break
+#         except openai.APIError as e:
+#             # Handle API error here, e.g. retry or log
+#             print(f"OpenAI API returned an API Error: {e}")
+#             break
+#         except openai.APIConnectionError as e:
+#             # Handle connection error here
+#             print(f"Failed to connect to OpenAI API: {e}")
+#             break
+#         except Exception as e:
+#             print(f"An unexpected error occurred: {e}")
+#             break
 
-    # If all retries failed, return a default sentiment score or raise an exception
-    return None  # or raise an exception
+#     # If all retries failed, return a default sentiment score or raise an exception
+#     return None  # or raise an exception
+
+
+async def get_sentiment_scores(contents, ticker_to_security, existing_news_securities_set):
+    batch_data = {
+        "batch": []
+    }
+
+    for article, content in contents:
+        if article['publisher']['name'] == "Zacks Investment Research":
+            for ticker in set(article['tickers']):
+                security_entry = ticker_to_security.get(ticker)
+                if security_entry and (article['id'], ticker) not in existing_news_securities_set:
+                    batch_data["batch"].append({
+                        "custom_id": f"request|:|{article['id']}|:|{ticker}",
+                        "method": "POST",
+                        "url": "/v1/chat/completions",
+                        "body": {
+                            "model": "gpt-4-turbo",
+                            "messages": [{
+                                "role": "system",
+                                "content": "You are a sentiment analysis AI that provides numerical outputs."
+                            }, {
+                                "role": "user",
+                                "content": f"Calculate the integer sentiment score for the following news article related to the stock ticker {ticker} on a scale from 1 to 100, where 1 is most negative and 100 is most positive. IN YOUR RESPONSE, PLEASE PRODUCE THE SCORE ONLY:\n\n{content}"
+                            }],
+                            "temperature": 0,
+                            "seed": 0
+                        }
+                    })
+                    existing_news_securities_set.add((article['id'], ticker))
+
+    response = requests.post(f"{BCOMP_BASE_URL}/genai", json=batch_data)
+    job_id = response.json()['job_id']
+    print(f"Job ID: {job_id}")
+
+    while True:
+        status_response = requests.get(f"{BCOMP_BASE_URL}/status/{job_id}")
+        status_data = status_response.json()
+
+        if status_data['state'] == 'SUCCESS':
+            sentiment_scores = {}
+            for result in status_data['result']:
+                if result['error'] is None and result['response']['status_code'] == 200:
+                    sentiment_text = result['response']['body']['choices'][0]['message']['content'].strip(
+                    )
+                    match = re.search(r'\b\d+\b', sentiment_text)
+                    if match:
+                        sentiment_score = int(match.group())
+                        if 1 <= sentiment_score <= 100:
+                            custom_id = result['custom_id']
+                            sentiment_scores[custom_id] = sentiment_score
+            return sentiment_scores
+        elif status_data['state'] == 'FAILURE':
+            return None
+        else:  # PENDING
+            await asyncio.sleep(15)  # Wait for 15 seconds before polling again
 
 
 async def worker(session, queue, semaphore, contents, progress_data):
@@ -717,56 +774,49 @@ async def populate_news():
             (ns.news_id, ns.ticker) for ns in existing_news_securities}
 
         # Insert the news data into the database
-        for article, content in contents:
-            published_utc = pytz.utc.localize(datetime.strptime(
-                article['published_utc'], '%Y-%m-%dT%H:%M:%SZ'))
-            exch_time = published_utc.astimezone(timezone(
-                'US/Eastern')).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
+        sentiment_scores = await get_sentiment_scores(contents, ticker_to_security, existing_news_securities_set)
 
-            # Check if the article exists, if not, create a new News entry
-            if article['id'] not in existing_article_ids:
-                news_entry = News(
-                    id=article['id'],
-                    exch_time=exch_time,
-                    published_utc=published_utc.replace(tzinfo=None),
-                    publisher_name=article['publisher']['name'],
-                    title=article['title'],
-                    author=article['author'],
-                    article_url=article['article_url'],
-                    content=content
+        if sentiment_scores is not None:
+            print(f"Sentiment scores: {sentiment_scores}")
+            for article, content in contents:
+                published_utc = pytz.utc.localize(datetime.strptime(
+                    article['published_utc'], '%Y-%m-%dT%H:%M:%SZ'))
+                exch_time = published_utc.astimezone(timezone(
+                    'US/Eastern')).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
+
+                # Check if the article exists, if not, create a new News entry
+                if article['id'] not in existing_article_ids:
+                    news_entry = News(
+                        id=article['id'],
+                        exch_time=exch_time,
+                        published_utc=published_utc.replace(tzinfo=None),
+                        publisher_name=article['publisher']['name'],
+                        title=article['title'],
+                        author=article['author'],
+                        article_url=article['article_url'],
+                        content=content
+                    )
+                    db.session.add(news_entry)
+                    # Update the existing_article_ids set to include the new article
+                    existing_article_ids.add(article['id'])
+
+            for custom_id, sentiment_score in sentiment_scores.items():
+                _, article_id, ticker = custom_id.split('|:|')
+                # Create a NewsSecurities association object
+                news_security_entry = NewsSecurities(
+                    news_id=article_id,
+                    ticker=ticker,
+                    sentiment=sentiment_score
                 )
-                db.session.add(news_entry)
-                # Update the existing_article_ids set to include the new article
-                existing_article_ids.add(article['id'])
+                db.session.add(news_security_entry)
 
-            # Check for Zacks Investment Research publisher before adding sentiment
-            if article['publisher']['name'] == "Zacks Investment Research":
-                # Add related tickers to the news_entry
-                for ticker in set(article['tickers']):
-                    security_entry = ticker_to_security.get(ticker)
-                    if security_entry:
-                        # Check if the (news_id, ticker) pair already exists in the set
-                        if (article['id'], ticker) not in existing_news_securities_set:
-                            # Get the sentiment score for the article with respect to the ticker
-                            print(f"Getting sentiment score for {ticker}...")
-                            sentiment_score = await get_sentiment_score(content, ticker)
-
-                            # Create a NewsSecurities association object
-                            news_security_entry = NewsSecurities(
-                                news_id=article['id'],
-                                ticker=security_entry.ticker,
-                                sentiment=sentiment_score
-                            )
-                            db.session.add(news_security_entry)
-                            # Add the new pair to the set to prevent duplicate checks
-                            existing_news_securities_set.add(
-                                (article['id'], ticker))
-
-        try:
-            db.session.commit()
-        except IntegrityError as e:
-            db.session.rollback()  # Rollback the session on IntegrityError
-            return jsonify({'status': 'error', 'message': 'Database integrity error occurred.'}), 500
+            try:
+                db.session.commit()
+            except IntegrityError as e:
+                db.session.rollback()  # Rollback the session on IntegrityError
+                return jsonify({'status': 'error', 'message': 'Database integrity error occurred.'}), 500
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to retrieve sentiment scores.'}), 500
 
     return jsonify({'status': 'success', 'message': 'News data updated.'})
 

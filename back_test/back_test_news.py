@@ -162,8 +162,8 @@ if __name__ == '__main__':
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    start_date = date(2024, 5, 17)
-    end_date = date(2024, 5, 17)
+    start_date = date(2024, 5, 24)
+    end_date = date(2024, 5, 24)
     n_days_sentiment = 13
     k_stocks = 70
     m_weeks_hold = 1
