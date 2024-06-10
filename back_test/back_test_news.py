@@ -110,10 +110,10 @@ def backtest_sentiment_strategy(start_date, end_date, n_days_sentiment, k_stocks
                 day, 0.9, (next_last_trading_day - last_trading_day).days/365.0, k_stocks, session)
             # high_iv_stocks = filter_stocks_based_on_return(
             #     day, k_stocks, session)
-            # sentiment_scores = get_sentiment_scores(
-            #     high_iv_stocks, day - timedelta(days=n_days_sentiment), day, session)
             sentiment_scores = get_sentiment_scores(
-                high_iv_stocks, day - timedelta(days=n_days_sentiment//2), day + timedelta(days=n_days_sentiment//2), session)
+                high_iv_stocks, day - timedelta(days=n_days_sentiment), day, session)
+            # sentiment_scores = get_sentiment_scores(
+            #     high_iv_stocks, day - timedelta(days=n_days_sentiment//2), day + timedelta(days=n_days_sentiment//2), session)
             # Exclude items with None values
             sentiment_scores = {ticker: score for ticker,
                                 score in sentiment_scores.items() if score}
@@ -162,12 +162,12 @@ if __name__ == '__main__':
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    start_date = date(2024, 5, 24)
-    end_date = date(2024, 5, 24)
+    start_date = date(2024, 5, 17)
+    end_date = date(2024, 5, 17)
     n_days_sentiment = 13
-    k_stocks = 70
+    k_stocks = 50
     m_weeks_hold = 1
-    p_weeks_delay = 1
+    p_weeks_delay = 2
     frac = 2
     returns = backtest_sentiment_strategy(
         start_date, end_date, n_days_sentiment, k_stocks, m_weeks_hold, p_weeks_delay, frac, session)

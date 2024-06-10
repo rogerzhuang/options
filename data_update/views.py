@@ -620,7 +620,7 @@ async def get_sentiment_scores(contents, ticker_to_security, existing_news_secur
                         "method": "POST",
                         "url": "/v1/chat/completions",
                         "body": {
-                            "model": "gpt-4-turbo",
+                            "model": "gpt-4o",
                             "messages": [{
                                 "role": "system",
                                 "content": "You are a sentiment analysis AI that provides numerical outputs."
