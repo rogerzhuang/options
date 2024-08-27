@@ -28,7 +28,7 @@ main = Blueprint('main', __name__)
 POLYGON_API_KEY = os.environ.get('POLYGON_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 POLYGON_BASE_URL = 'https://api.polygon.io/v3/reference/options/contracts'
-BCOMP_BASE_URL = 'https://sred-5bef67007952.herokuapp.com'
+BCOMP_BASE_URL = 'https://genai.omnichat.org'
 
 
 def get_last_trading_day_of_week(date, valid_days):
@@ -634,12 +634,12 @@ async def get_sentiment_scores(contents, ticker_to_security, existing_news_secur
                     })
                     existing_news_securities_set.add((article['id'], ticker))
 
-    response = requests.post(f"{BCOMP_BASE_URL}/genai", json=batch_data)
+    response = requests.post(f"{BCOMP_BASE_URL}/bproc", json=batch_data)
     job_id = response.json()['job_id']
     print(f"Job ID: {job_id}")
 
     while True:
-        status_response = requests.get(f"{BCOMP_BASE_URL}/status/{job_id}")
+        status_response = requests.get(f"{BCOMP_BASE_URL}/bstatus/{job_id}")
         status_data = status_response.json()
 
         if status_data['state'] == 'SUCCESS':

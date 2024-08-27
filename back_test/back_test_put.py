@@ -263,5 +263,5 @@ def backtest_strategy(start_date, end_date):
 
 
 start_date = date(2021, 12, 17)
-end_date = date(2024, 1, 19)
+end_date = date(2024, 7, 12)
 backtest_strategy(start_date, end_date)

@@ -84,7 +84,7 @@ if __name__ == '__main__':
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    input_date = date(2024, 5, 31)
+    input_date = date(2024, 7, 12)
     high_put_iv_stocks = ','.join(
         get_stock_list_with_high_put_iv(input_date, 0.9, 7.0/365.0, 70, session))
     print("stocks with highest put IVs on",

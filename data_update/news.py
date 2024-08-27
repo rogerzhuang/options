@@ -37,7 +37,7 @@ def get_largest_text_block(soup):
 
 
 if __name__ == '__main__':
-    URL = 'https://www.zacks.com/stock/news/2172009/sunnova-energy-nova-reports-q3-loss-tops-revenue-estimates'
+    URL = 'https://finance.yahoo.com/news/nio-inc-nio-stock-drops-214509624.html'
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }

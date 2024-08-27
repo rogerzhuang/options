@@ -189,8 +189,8 @@ SELECT n.title, n.exch_time, ns.sentiment, n.article_url, n.author, n.content
 FROM news n 
 INNER JOIN news_securities ns ON n.id = ns.news_id
 INNER JOIN securities ON ns.ticker = securities.ticker
-WHERE n.exch_time >= '2024-03-29' AND n.exch_time <= '2024-05-02'
-AND securities.ticker = 'CVNA';
+WHERE n.exch_time >= '2024-06-29' AND n.exch_time <= '2024-07-12'
+AND securities.ticker = 'NIO';
 
 select distinct publisher_name from news
 The Motley Fool

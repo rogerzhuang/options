@@ -97,4 +97,4 @@ def main(start_date):
 
 # Example usage
 if __name__ == "__main__":
-    main("2024-05-31")
+    main("2024-08-23")

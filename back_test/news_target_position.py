@@ -7,7 +7,7 @@ import pandas as pd
 with open("news_ls.json", "r") as file:
     portfolios = json.load(file)
 
-total_capital = 8_000_000  # Example total capital
+total_capital = 4_000_000  # Example total capital
 
 all_tickers = set()
 for portfolio in portfolios.values():

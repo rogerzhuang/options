@@ -106,6 +106,76 @@ def backtest_sentiment_strategy(start_date, end_date, n_days_sentiment, k_stocks
         if day == last_trading_day:
             next_last_trading_day = get_last_trading_day_of_week(
                 last_trading_day + timedelta(weeks=1), valid_days)
+            # high_iv_stocks = ['AIRC',
+            #                   'PB',
+            #                   'GXO',
+            #                   'TRNO',
+            #                   'LNTH',
+            #                   'SON',
+            #                   'MTG',
+            #                   'BMI',
+            #                   'SIGI',
+            #                   'VKTX',
+            #                   'VMI',
+            #                   'SSB',
+            #                   'LYFT',
+            #                   'DJT',
+            #                   'RBRK',
+            #                   'DAR',
+            #                   'FAF',
+            #                   'SNV',
+            #                   'ALGM',
+            #                   'VERX',
+            #                   'SM',
+            #                   'VVV',
+            #                   'JXN',
+            #                   'VNO',
+            #                   'FSK',
+            #                   'SRCL',
+            #                   'CBT',
+            #                   'NSA',
+            #                   'RITM',
+            #                   'LOAR',
+            #                   'RRR',
+            #                   'XRAY',
+            #                   'HIMS',
+            #                   'LNC',
+            #                   'SWX',
+            #                   'VFC',
+            #                   'BEPC',
+            #                   'SEE',
+            #                   'COOP',
+            #                   'MMS',
+            #                   'RCM',
+            #                   'ALK',
+            #                   'HXL',
+            #                   'ZWS',
+            #                   'R',
+            #                   'OGN',
+            #                   'TNET',
+            #                   'CWAN',
+            #                   'FSS',
+            #                   'LANC',
+            #                   'BBIO',
+            #                   'KBH',
+            #                   'FNMAL',
+            #                   'AL',
+            #                   'ONB',
+            #                   'MDU',
+            #                   'CVLT',
+            #                   'MOD',
+            #                   'DOCS',
+            #                   'PBF',
+            #                   'BYD',
+            #                   'CWEN',
+            #                   'TDW',
+            #                   'NUVL',
+            #                   'M',
+            #                   'NEU',
+            #                   'AWI',
+            #                   'TEM',
+            #                   'MGY',
+            #                   'NFG']
             high_iv_stocks = get_stock_list_with_high_put_iv(
                 day, 0.9, (next_last_trading_day - last_trading_day).days/365.0, k_stocks, session)
             # high_iv_stocks = filter_stocks_based_on_return(
@@ -162,12 +232,12 @@ if __name__ == '__main__':
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    start_date = date(2024, 5, 17)
-    end_date = date(2024, 5, 17)
+    start_date = date(2024, 7, 12)
+    end_date = date(2024, 7, 12)
     n_days_sentiment = 13
     k_stocks = 50
     m_weeks_hold = 1
-    p_weeks_delay = 2
+    p_weeks_delay = 0
     frac = 2
     returns = backtest_sentiment_strategy(
         start_date, end_date, n_days_sentiment, k_stocks, m_weeks_hold, p_weeks_delay, frac, session)
