@@ -12,7 +12,7 @@ def read_tickers_from_csv(file_path):
 
 
 def update_tickers(tickers, start_date, end_date):
-    url = "http://127.0.0.1:8000/populate_tickers"
+    url = "http://127.0.0.1:5000/populate_tickers"
     headers = {
         "Content-Type": "application/json"
     }
@@ -34,7 +34,7 @@ def update_tickers(tickers, start_date, end_date):
 
 
 def update_prices(tickers, start_date, end_date):
-    url = "http://127.0.0.1:8000/populate_prices"
+    url = "http://127.0.0.1:5000/populate_prices"
     headers = {
         "Content-Type": "application/json"
     }
@@ -56,7 +56,7 @@ def update_prices(tickers, start_date, end_date):
 
 
 def update_iv_surfs(tickers, start_date, end_date):
-    url = "http://127.0.0.1:8000/populate_iv_surfs"
+    url = "http://127.0.0.1:5000/populate_iv_surfs"
     headers = {
         "Content-Type": "application/json"
     }
