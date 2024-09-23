@@ -92,14 +92,14 @@ def backtest_strategy(start_date, end_date):
         str_day = datetime.strftime(day, '%Y-%m-%d')
         str_next_week_expiry = datetime.strftime(next_week_expiry, '%Y-%m-%d')
 
-        response = requests.post('http://127.0.0.1:8000/get_iv_surfs', json={
+        response = requests.post('http://127.0.0.1:5000/get_iv_surfs', json={
             'tickers': [stock.ticker for stock in stocks],
             'start_date': str_day,
             'end_date': str_day
         })
         iv_surfs = response.json()
 
-        response = requests.post('http://127.0.0.1:8000/get_stock_price', json={
+        response = requests.post('http://127.0.0.1:5000/get_stock_price', json={
             'tickers': [stock.ticker for stock in stocks],
             'start_date': str_day,
             'end_date': str_day
@@ -113,7 +113,7 @@ def backtest_strategy(start_date, end_date):
         # Retrieve historical prices two months ago
         str_two_months_ago = datetime.strftime(
             two_months_ago_trading_day, '%Y-%m-%d')
-        response = requests.post('http://127.0.0.1:8000/get_stock_price', json={
+        response = requests.post('http://127.0.0.1:5000/get_stock_price', json={
             'tickers': [stock.ticker for stock in stocks],
             'start_date': str_two_months_ago,
             'end_date': str_two_months_ago
@@ -159,7 +159,7 @@ def backtest_strategy(start_date, end_date):
         capital_per_option = min(capital_per_option, CAPITAL / 20)
 
         tickers_to_check = [stock.ticker for stock in valid_options_iv_check]
-        response = requests.post('http://127.0.0.1:8000/get_stock_price', json={
+        response = requests.post('http://127.0.0.1:5000/get_stock_price', json={
             'tickers': tickers_to_check,
             'start_date': str_next_week_expiry,
             'end_date': str_next_week_expiry
@@ -174,7 +174,7 @@ def backtest_strategy(start_date, end_date):
             expiry_date = holdings[exercised_tickers[0]]["expiry_date"]
             three_weeks_later = last_trading_days[last_trading_days.index(
                 expiry_date) + 3]
-            response = requests.post('http://127.0.0.1:8000/get_stock_price', json={
+            response = requests.post('http://127.0.0.1:5000/get_stock_price', json={
                 'tickers': exercised_tickers,
                 'start_date': datetime.strftime(expiry_date, '%Y-%m-%d'),
                 'end_date': datetime.strftime(three_weeks_later, '%Y-%m-%d')

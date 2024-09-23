@@ -39,7 +39,7 @@ def get_sentiment_scores(tickers, start_date, end_date, session):
 
 # def get_stock_prices_on_day(tickers, day):
 #     str_day = datetime.strftime(day, '%Y-%m-%d')
-#     response = requests.post('http://127.0.0.1:8000/get_stock_price', json={
+#     response = requests.post('http://127.0.0.1:5000/get_stock_price', json={
 #         'tickers': tickers,
 #         'start_date': str_day,
 #         'end_date': str_day
@@ -48,7 +48,7 @@ def get_sentiment_scores(tickers, start_date, end_date, session):
 def get_stock_prices_on_day(tickers, day):
     str_day = datetime.strftime(day, '%Y-%m-%d')
     try:
-        response = requests.post('http://127.0.0.1:8000/get_stock_price', json={
+        response = requests.post('http://127.0.0.1:5000/get_stock_price', json={
             'tickers': tickers,
             'start_date': str_day,
             'end_date': str_day

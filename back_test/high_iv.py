@@ -11,6 +11,7 @@ import os
 import json
 import argparse
 
+
 def get_stock_list_with_high_put_iv(input_date, strike_ratio, expiry_days, n_stocks, session):
     T = expiry_days / 365.0
 
@@ -42,7 +43,7 @@ def get_stock_list_with_high_put_iv(input_date, strike_ratio, expiry_days, n_sto
     tickers = [stock.ticker for stock in stocks]
 
     # Fetch IV surfaces
-    response = requests.post('http://127.0.0.1:8000/get_iv_surfs', json={
+    response = requests.post('http://127.0.0.1:5000/get_iv_surfs', json={
         'tickers': tickers,
         'start_date': str_input_date,
         'end_date': str_input_date
@@ -71,11 +72,16 @@ def get_stock_list_with_high_put_iv(input_date, strike_ratio, expiry_days, n_sto
 
 if __name__ == '__main__':
     # Set up argument parser
-    parser = argparse.ArgumentParser(description='Fetch stocks with the highest put IV.')
-    parser.add_argument('input_date', type=str, help='Date to fetch data for (format YYYY-MM-DD)')
-    parser.add_argument('strike_ratio', type=float, help='Strike price ratio for IV calculation')
-    parser.add_argument('expiry_days', type=float, help='Days to expiry for the option')
-    parser.add_argument('n_stocks', type=int, help='Number of stocks to return with highest put IVs')
+    parser = argparse.ArgumentParser(
+        description='Fetch stocks with the highest put IV.')
+    parser.add_argument('input_date', type=str,
+                        help='Date to fetch data for (format YYYY-MM-DD)')
+    parser.add_argument('strike_ratio', type=float,
+                        help='Strike price ratio for IV calculation')
+    parser.add_argument('expiry_days', type=float,
+                        help='Days to expiry for the option')
+    parser.add_argument('n_stocks', type=int,
+                        help='Number of stocks to return with highest put IVs')
 
     # Parse the command line arguments
     args = parser.parse_args()
@@ -99,6 +105,7 @@ if __name__ == '__main__':
 
     # Get the list of stocks with high put IV
     high_put_iv_stocks = ','.join(
-        get_stock_list_with_high_put_iv(input_date, args.strike_ratio, args.expiry_days, args.n_stocks, session)
+        get_stock_list_with_high_put_iv(
+            input_date, args.strike_ratio, args.expiry_days, args.n_stocks, session)
     )
     print(f"Stocks with highest put IVs on {input_date}: {high_put_iv_stocks}")
