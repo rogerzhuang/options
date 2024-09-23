@@ -20,6 +20,7 @@ import os
 from openai import AsyncOpenAI
 import openai
 import re
+from itertools import cycle
 
 load_dotenv()
 
@@ -27,8 +28,37 @@ main = Blueprint('main', __name__)
 
 POLYGON_API_KEY = os.environ.get('POLYGON_API_KEY')
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+FINNHUB_API_KEY = os.environ.get('FINNHUB_API_KEY')
+WEBSHARE_API_KEY = os.environ.get('WEBSHARE_API_KEY')
 POLYGON_BASE_URL = 'https://api.polygon.io/v3/reference/options/contracts'
-BCOMP_BASE_URL = 'https://genai.omnichat.org'
+FINNHUB_BASE_URL = 'https://finnhub.io/api/v1'
+BCOMP_BASE_URL = 'http://202.74.1.155:8000'
+
+# Function to fetch and process proxies
+
+
+def get_proxies():
+    proxy_url = f"https://proxy.webshare.io/api/v2/proxy/list/download/{WEBSHARE_API_KEY}/-/any/sourceip/direct/-/"
+    response = requests.get(proxy_url)
+    if response.status_code == 200:
+        proxies = [
+            f"http://{line.strip()}" for line in response.text.split('\n') if line.strip()]
+        return proxies
+    else:
+        raise ValueError(
+            f"Failed to fetch proxies. Status code: {response.status_code}")
+
+
+# Fetch and set up proxy pool
+try:
+    PROXIES = get_proxies()
+    if not PROXIES:
+        raise ValueError("No proxies fetched from the provided URL.")
+    proxy_pool = cycle(PROXIES)
+except Exception as e:
+    print(f"Error setting up proxies: {e}")
+    print("Continuing without proxies...")
+    proxy_pool = cycle([None])
 
 
 def get_last_trading_day_of_week(date, valid_days):
@@ -514,125 +544,233 @@ def get_iv_surface_data():
     return jsonify({'X': X.tolist(), 'Y': Y.tolist(), 'Z': Z.tolist()})
 
 
-async def fetch_news(session, base_url, semaphore):
-    all_news = []
-    while base_url:
-        async with semaphore:
-            for attempt in range(RETRY_ATTEMPTS):
-                try:
-                    async with session.get(base_url, timeout=timeout) as response:
-                        if response.status != 200:
-                            raise aiohttp.ClientResponseError(
-                                response, message=f"Received status {response.status}")
-                        data = await response.json()
-                        all_news.extend(data['results'])
-                        base_url = data.get(
-                            'next_url') + f"&apiKey={POLYGON_API_KEY}" if 'next_url' in data else None
-                        break  # Break the attempt loop if successful
-                except (aiohttp.ClientError, aiohttp.ClientResponseError, asyncio.TimeoutError) as e:
-                    if attempt < RETRY_ATTEMPTS - 1:
-                        await asyncio.sleep(1)  # wait a second before retrying
-                        continue
+async def get_content(session, url, semaphore):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    async with semaphore:
+        for attempt in range(RETRY_ATTEMPTS):
+            try:
+                proxy = next(proxy_pool)
+                async with session.get(url, headers=headers, allow_redirects=False, timeout=timeout, proxy=proxy) as response:
+                    if response.status == 302:
+                        redirect_url = response.headers['Location']
+                        async with session.get(redirect_url, headers=headers, timeout=timeout, proxy=proxy) as content_response:
+                            if content_response.status != 200:
+                                raise aiohttp.ClientResponseError(
+                                    request_info=content_response.request_info,
+                                    history=(),
+                                    status=content_response.status,
+                                    message=f"Received status {content_response.status}",
+                                    headers=content_response.headers
+                                )
+                            content = await content_response.text()
+                            soup = BeautifulSoup(content, 'html.parser')
+                            largest_text, tag = get_largest_text_block(soup)
+                            return largest_text.strip() if largest_text else None
                     else:
-                        return {'error': str(e), 'url': base_url}
-    return all_news
+                        raise aiohttp.ClientResponseError(
+                            request_info=response.request_info,
+                            history=(),
+                            status=response.status,
+                            message=f"Received status {response.status}",
+                            headers=response.headers
+                        )
+            except (aiohttp.ClientError, aiohttp.ClientResponseError, asyncio.TimeoutError) as e:
+                if attempt < RETRY_ATTEMPTS - 1:
+                    backoff_time = 2 ** attempt
+                    print(
+                        f"Attempt {attempt + 1}: Waiting {backoff_time} seconds before retrying for URL {url}")
+                    await asyncio.sleep(backoff_time)
+                    continue
+                else:
+                    print(f"Failed to fetch content for URL {url}: {e}")
+                    return None
 
 
-# # Function to get sentiment score using GPT-4 turbo model
-# async def get_sentiment_score(content, ticker, max_retries=5):
-#     async_openai_client = AsyncOpenAI(
-#         api_key=OPENAI_API_KEY, timeout=6, max_retries=3)
-
-#     # Construct the prompt for the sentiment analysis
-#     prompt = f"Calculate the integer sentiment score for the following news article related to the stock ticker {ticker} on a scale from 1 to 100, where 1 is most negative and 100 is most positive. IN YOUR RESPONSE, PLEASE PRODUCE THE SCORE ONLY:\n\n{content}"
-
-#     attempt = 0
-#     while attempt < max_retries:
-#         try:
-#             # Call the OpenAI API
-#             response = await async_openai_client.chat.completions.create(
-#                 messages=[
-#                     {
-#                         "role": "system",
-#                         "content": "You are a sentiment analysis AI."
-#                     },
-#                     {
-#                         "role": "user",
-#                         "content": prompt
-#                     }
-#                 ],
-#                 model="gpt-4-turbo",
-#             )
-
-#             # Extract the sentiment score from the response
-#             sentiment_text = response.choices[0].message.content.strip()
-#             # Use regular expression to find an integer in the response
-#             match = re.search(r'\b\d+\b', sentiment_text)
-#             if match:
-#                 # Convert the matched number to an integer
-#                 sentiment_score = int(match.group())
-#                 # Ensure the score is within the expected range
-#                 if 1 <= sentiment_score <= 100:
-#                     print(f"Sentiment score for {ticker}: {sentiment_score}")
-#                     return sentiment_score
-#             # If no integer is found or the score is out of range, handle the error
-#             raise ValueError
-
-#         except openai.RateLimitError as e:
-#             attempt += 1
-#             wait_time = min(3 ** attempt, 60)
-#             print(
-#                 f"Rate limit reached: {e}, waiting for {wait_time} seconds before retrying...")
-#             await asyncio.sleep(wait_time)
-#         except ValueError:
-#             # If the sentiment score could not be parsed, return None
-#             print(
-#                 f"Could not parse a valid sentiment score from the response for ticker {ticker}: {sentiment_text}")
-#             break
-#         except openai.APIError as e:
-#             # Handle API error here, e.g. retry or log
-#             print(f"OpenAI API returned an API Error: {e}")
-#             break
-#         except openai.APIConnectionError as e:
-#             # Handle connection error here
-#             print(f"Failed to connect to OpenAI API: {e}")
-#             break
-#         except Exception as e:
-#             print(f"An unexpected error occurred: {e}")
-#             break
-
-#     # If all retries failed, return a default sentiment score or raise an exception
-#     return None  # or raise an exception
+async def fetch_news(session, ticker, start_date, end_date, semaphore):
+    url = f"{FINNHUB_BASE_URL}/company-news?symbol={ticker}&from={start_date}&to={end_date}&token={FINNHUB_API_KEY}"
+    async with semaphore:
+        for attempt in range(RETRY_ATTEMPTS):
+            try:
+                proxy = next(proxy_pool)
+                async with session.get(url, timeout=timeout, proxy=proxy) as response:
+                    if response.status != 200:
+                        raise aiohttp.ClientResponseError(
+                            request_info=response.request_info,
+                            history=(),
+                            status=response.status,
+                            message=f"Received status {response.status}",
+                            headers=response.headers
+                        )
+                    data = await response.json()
+                    return [article for article in data if article['source'] == 'Yahoo']
+            except (aiohttp.ClientError, aiohttp.ClientResponseError, asyncio.TimeoutError) as e:
+                if attempt < RETRY_ATTEMPTS - 1:
+                    print(
+                        f"Attempt {attempt + 1}: Waiting 60 seconds before retrying for ticker {ticker}")
+                    await asyncio.sleep(60)
+                    continue
+                else:
+                    print(f"Failed to fetch news for {ticker}: {e}")
+                    return []
 
 
-async def get_sentiment_scores(contents, ticker_to_security, existing_news_securities_set):
+async def worker(session, queue, semaphore, contents, progress_data):
+    while True:
+        article = await queue.get()
+        content = await get_content(session, article['url'], semaphore)
+        contents.append((article, content))
+        queue.task_done()
+
+        progress_data['articles_processed'] += 1
+        progress = (progress_data['articles_processed'] /
+                    progress_data['total_articles']) * 100
+        print(f"Progress: {progress:.2f}%")
+        app.socketio.emit('news_update_progress', {'progress': progress})
+
+
+@main.route('/populate_news', methods=['POST'])
+async def populate_news():
+    data = request.json
+    tickers = data.get('tickers', [])
+    start_date = datetime.strptime(data.get('start_date', (datetime.now(
+    ) - timedelta(days=30)).strftime('%Y-%m-%d')), '%Y-%m-%d')
+    end_date = datetime.strptime(
+        data.get('end_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d')
+
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for ticker in tickers:
+            tasks.append(fetch_news(session, ticker, start_date.strftime(
+                '%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), semaphore))
+
+        responses = await asyncio.gather(*tasks)
+
+        total_articles = sum(len(articles) for articles in responses)
+        progress_data = {'articles_processed': 0,
+                         'total_articles': total_articles}
+
+        contents = []
+        queue = asyncio.Queue()
+
+        for response in responses:
+            for article in response:
+                await queue.put(article)
+
+        workers = [asyncio.create_task(worker(
+            session, queue, semaphore, contents, progress_data)) for _ in range(MAX_WORKERS)]
+
+        await queue.join()
+
+        for w in workers:
+            w.cancel()
+
+        all_article_ids = {str(article['id'])
+                           for response in responses for article in response}
+        all_tickers = set(tickers)
+
+        existing_articles = News.query.filter(
+            News.id.in_(all_article_ids)).all()
+        existing_tickers = Securities.query.filter(
+            Securities.ticker.in_(all_tickers)).all()
+        existing_news_securities = NewsSecurities.query.filter(
+            NewsSecurities.news_id.in_(all_article_ids)).all()
+
+        existing_article_ids = {str(article.id)
+                                for article in existing_articles}
+        ticker_to_security = {
+            ticker.ticker: ticker for ticker in existing_tickers}
+        existing_news_securities_set = {
+            (str(ns.news_id), ns.ticker) for ns in existing_news_securities}
+
+        for article, content in contents:
+            published_utc = datetime.fromtimestamp(
+                article['datetime']).replace(tzinfo=timezone('UTC'))
+            exch_time = published_utc.astimezone(timezone(
+                'US/Eastern')).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
+
+            if str(article['id']) not in existing_article_ids:
+                news_entry = News(
+                    id=str(article['id']),
+                    exch_time=exch_time,
+                    published_utc=published_utc.replace(tzinfo=None),
+                    publisher_name='Yahoo',
+                    title=article['headline'],
+                    author='',  # Finnhub doesn't provide author information
+                    article_url=article['url'],
+                    content=content
+                )
+                db.session.add(news_entry)
+                existing_article_ids.add(str(article['id']))
+
+            for ticker in article['related'].split(','):
+                if ticker in ticker_to_security and (str(article['id']), ticker) not in existing_news_securities_set:
+                    news_security_entry = NewsSecurities(
+                        news_id=str(article['id']),
+                        ticker=ticker,
+                        sentiment=None  # We'll update this in a separate route
+                    )
+                    db.session.add(news_security_entry)
+                    existing_news_securities_set.add(
+                        (str(article['id']), ticker))
+
+        try:
+            db.session.commit()
+        except IntegrityError as e:
+            db.session.rollback()
+            return jsonify({'status': 'error', 'message': 'Database integrity error occurred.'}), 500
+
+    return jsonify({'status': 'success', 'message': 'News data updated.'})
+
+
+@main.route('/update_sentiment_scores', methods=['POST'])
+async def update_sentiment_scores():
+    data = request.json
+    tickers = data.get('tickers', [])
+    start_date = datetime.strptime(data.get('start_date', (datetime.now(
+    ) - timedelta(days=30)).strftime('%Y-%m-%d')), '%Y-%m-%d')
+    end_date = datetime.strptime(
+        data.get('end_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d')
+
+    end_date = datetime.combine(end_date, datetime.max.time())
+
+    news_securities = db.session.query(NewsSecurities).join(News).filter(
+        NewsSecurities.ticker.in_(tickers),
+        News.published_utc.between(start_date, end_date),
+        NewsSecurities.sentiment.is_(None)
+    ).all()
+
+    news_ids = [ns.news_id for ns in news_securities]
+    news_contents = News.query.filter(News.id.in_(news_ids)).all()
+
+    content_dict = {news.id: news.content for news in news_contents}
+
     batch_data = {
         "batch": []
     }
 
-    for article, content in contents:
-        if article['publisher']['name'] == "Zacks Investment Research":
-            for ticker in set(article['tickers']):
-                security_entry = ticker_to_security.get(ticker)
-                if security_entry and (article['id'], ticker) not in existing_news_securities_set:
-                    batch_data["batch"].append({
-                        "custom_id": f"request|:|{article['id']}|:|{ticker}",
-                        "method": "POST",
-                        "url": "/v1/chat/completions",
-                        "body": {
-                            "model": "gpt-4o",
-                            "messages": [{
-                                "role": "system",
-                                "content": "You are a sentiment analysis AI that provides numerical outputs."
-                            }, {
-                                "role": "user",
-                                "content": f"Calculate the integer sentiment score for the following news article related to the stock ticker {ticker} on a scale from 1 to 100, where 1 is most negative and 100 is most positive. IN YOUR RESPONSE, PLEASE PRODUCE THE SCORE ONLY:\n\n{content}"
-                            }],
-                            "temperature": 0,
-                            "seed": 0
-                        }
-                    })
-                    existing_news_securities_set.add((article['id'], ticker))
+    for ns in news_securities:
+        content = content_dict.get(ns.news_id)
+        if content:
+            batch_data["batch"].append({
+                "custom_id": f"request|:|{ns.news_id}|:|{ns.ticker}",
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": "gpt-4o",
+                    "messages": [{
+                        "role": "system",
+                        "content": "You are a sentiment analysis AI that provides numerical outputs."
+                    }, {
+                        "role": "user",
+                        "content": f"Calculate the integer sentiment score for the following news article related to the stock ticker {ns.ticker} on a scale from 1 to 100, where 1 is most negative and 100 is most positive. IN YOUR RESPONSE, PLEASE PRODUCE THE SCORE ONLY:\n\n{content}"
+                    }],
+                    "temperature": 0,
+                    "seed": 0
+                }
+            })
 
     response = requests.post(f"{BCOMP_BASE_URL}/bproc", json=batch_data)
     job_id = response.json()['job_id']
@@ -654,171 +792,32 @@ async def get_sentiment_scores(contents, ticker_to_security, existing_news_secur
                         if 1 <= sentiment_score <= 100:
                             custom_id = result['custom_id']
                             sentiment_scores[custom_id] = sentiment_score
-            return sentiment_scores
-        elif status_data['state'] == 'FAILURE':
-            return None
-        else:  # PENDING
-            await asyncio.sleep(15)  # Wait for 15 seconds before polling again
 
-
-async def worker(session, queue, semaphore, contents, progress_data):
-    while True:
-        article = await queue.get()
-        content = await get_content(session, article['article_url'], semaphore)
-        # Append a tuple with the ticker, article, and content (or None)
-        contents.append((article, content))
-        queue.task_done()
-
-        # Update progress
-        progress_data['articles_processed'] += 1
-        progress = (progress_data['articles_processed'] /
-                    progress_data['total_articles']) * 100
-        print(f"Progress: {progress}")
-        app.socketio.emit('news_update_progress', {'progress': progress})
-
-
-async def get_content(session, url, semaphore):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
-    async with semaphore:
-        for attempt in range(RETRY_ATTEMPTS):
-            try:
-                async with session.get(url, headers=headers, timeout=timeout) as response:
-                    if response.status != 200:
-                        raise aiohttp.ClientResponseError(
-                            request_info=response.request_info,
-                            history=(),
-                            status=response.status,
-                            message=f"Received status {response.status}",
-                            headers=response.headers
-                        )
-                    content = await response.text()
-                    soup = BeautifulSoup(content, 'html.parser')
-                    largest_text, tag = get_largest_text_block(soup)
-                    return largest_text
-            except (aiohttp.ClientError, aiohttp.ClientResponseError, asyncio.TimeoutError) as e:
-                if attempt < RETRY_ATTEMPTS - 1:
-                    # Exponential backoff
-                    backoff_time = math.pow(2, attempt) * 1.0
-                    print(
-                        f"Attempt {attempt + 1}: Waiting {backoff_time} seconds before retrying for URL {url}")
-                    await asyncio.sleep(backoff_time)
-                    continue
-                else:
-                    # Log the error, return None or handle it as appropriate
-                    print(f"Failed to fetch content for URL {url}: {e}")
-                    return None
-
-
-@main.route('/populate_news', methods=['POST'])
-async def populate_news():
-    data = request.json
-    tickers = data.get('tickers', [])
-    start_date = datetime.strptime(request.json.get(
-        'start_date', (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')), '%Y-%m-%d')
-    end_date = datetime.strptime(request.json.get(
-        'end_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d')
-
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-    async with aiohttp.ClientSession() as session:
-        tasks = []
-        for ticker in tickers:
-            url = f"https://api.polygon.io/v2/reference/news?ticker={ticker}&published_utc.gte={start_date.strftime('%Y-%m-%d')}&published_utc.lte={end_date.strftime('%Y-%m-%d')}&limit=50&apiKey={POLYGON_API_KEY}"
-            tasks.append(fetch_news(session, url, semaphore))
-
-        responses = await asyncio.gather(*tasks)
-
-        total_articles = sum(len(articles) for articles in responses)
-        progress_data = {'articles_processed': 0,
-                         'total_articles': total_articles}
-
-        # For each article_url, fetch the content.
-        # This list will now store tuples of (ticker, article, content)
-        contents = []
-        queue = asyncio.Queue()
-
-        for response in responses:
-            for article in response:
-                # Put a tuple of ticker and article
-                await queue.put(article)
-
-        workers = [asyncio.create_task(
-            worker(session, queue, semaphore, contents, progress_data)) for _ in range(MAX_WORKERS)]
-
-        await queue.join()  # Wait until the queue is fully processed
-
-        for w in workers:
-            w.cancel()
-
-        # Collect all unique article IDs and tickers from the responses
-        all_article_ids = {article['id']
-                           for response in responses for article in response}
-        all_tickers = {ticker for ticker in tickers}
-
-        # Query the database in bulk for existing articles and tickers
-        existing_articles = News.query.filter(
-            News.id.in_(all_article_ids)).all()
-        existing_tickers = Securities.query.filter(
-            Securities.ticker.in_(all_tickers)).all()
-        existing_news_securities = NewsSecurities.query.filter(
-            NewsSecurities.news_id.in_(all_article_ids)).all()
-
-        # Create sets of existing article IDs for efficient look-up
-        existing_article_ids = {article.id for article in existing_articles}
-        # Create a dictionary to map ticker symbols to Securities objects
-        ticker_to_security = {
-            ticker.ticker: ticker for ticker in existing_tickers}
-        # Create a set of (news_id, ticker) tuples for efficient look-up
-        existing_news_securities_set = {
-            (ns.news_id, ns.ticker) for ns in existing_news_securities}
-
-        # Insert the news data into the database
-        sentiment_scores = await get_sentiment_scores(contents, ticker_to_security, existing_news_securities_set)
-
-        if sentiment_scores is not None:
-            print(f"Sentiment scores: {sentiment_scores}")
-            for article, content in contents:
-                published_utc = pytz.utc.localize(datetime.strptime(
-                    article['published_utc'], '%Y-%m-%dT%H:%M:%SZ'))
-                exch_time = published_utc.astimezone(timezone(
-                    'US/Eastern')).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
-
-                # Check if the article exists, if not, create a new News entry
-                if article['id'] not in existing_article_ids:
-                    news_entry = News(
-                        id=article['id'],
-                        exch_time=exch_time,
-                        published_utc=published_utc.replace(tzinfo=None),
-                        publisher_name=article['publisher']['name'],
-                        title=article['title'],
-                        author=article['author'],
-                        article_url=article['article_url'],
-                        content=content
-                    )
-                    db.session.add(news_entry)
-                    # Update the existing_article_ids set to include the new article
-                    existing_article_ids.add(article['id'])
-
+            # Prepare bulk update data
+            bulk_update_data = []
             for custom_id, sentiment_score in sentiment_scores.items():
-                _, article_id, ticker = custom_id.split('|:|')
-                # Create a NewsSecurities association object
-                news_security_entry = NewsSecurities(
-                    news_id=article_id,
-                    ticker=ticker,
-                    sentiment=sentiment_score
-                )
-                db.session.add(news_security_entry)
+                _, news_id, ticker = custom_id.split('|:|')
+                bulk_update_data.append({
+                    'news_id': news_id,
+                    'ticker': ticker,
+                    'sentiment': sentiment_score
+                })
 
             try:
+                # Perform bulk update
+                db.session.bulk_update_mappings(
+                    NewsSecurities, bulk_update_data)
                 db.session.commit()
             except IntegrityError as e:
-                db.session.rollback()  # Rollback the session on IntegrityError
+                db.session.rollback()
                 return jsonify({'status': 'error', 'message': 'Database integrity error occurred.'}), 500
-        else:
-            return jsonify({'status': 'error', 'message': 'Failed to retrieve sentiment scores.'}), 500
 
-    return jsonify({'status': 'success', 'message': 'News data updated.'})
+            return jsonify({'status': 'success', 'message': 'Sentiment scores updated.'})
+
+        elif status_data['state'] == 'FAILURE':
+            return jsonify({'status': 'error', 'message': 'Failed to retrieve sentiment scores.'}), 500
+        else:  # PENDING
+            await asyncio.sleep(15)  # Wait for 15 seconds before polling again
 
 
 @main.route('/update/tickers', methods=['GET'])
@@ -849,6 +848,11 @@ def update_news():
 @main.route('/view/news', methods=['GET'])
 def view_news():
     return render_template('view_news.html')
+
+
+@main.route('/update/sentiment', methods=['GET'])
+def update_sentiment():
+    return render_template('update_sentiment.html')
 
 
 @main.route('/get_news', methods=['GET'])

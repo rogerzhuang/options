@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from datetime import date
+from datetime import datetime
 import requests
 import pickle
 import base64
@@ -9,9 +9,11 @@ from models import Stocks, HistPrice1D
 from dotenv import load_dotenv
 import os
 import json
+import argparse
 
+def get_stock_list_with_high_put_iv(input_date, strike_ratio, expiry_days, n_stocks, session):
+    T = expiry_days / 365.0
 
-def get_stock_list_with_high_put_iv(input_date, strike_ratio, T, n_stocks, session):
     # Load date ranges and tickers from JSON
     with open('ticker_date_ranges.json', 'r') as file:
         date_ranges = json.load(file)
@@ -35,11 +37,9 @@ def get_stock_list_with_high_put_iv(input_date, strike_ratio, T, n_stocks, sessi
     # If filtered_tickers is not None, filter stocks based on the tickers list
     if filtered_tickers is not None:
         stocks = [stock for stock in stocks if stock.ticker in filtered_tickers]
-        # print("Filtered stocks:", [stock.ticker for stock in stocks])
 
     # Preparing request data
     tickers = [stock.ticker for stock in stocks]
-    # str_input_date = input_date.strftime('%Y-%m-%d')
 
     # Fetch IV surfaces
     response = requests.post('http://127.0.0.1:8000/get_iv_surfs', json={
@@ -69,8 +69,21 @@ def get_stock_list_with_high_put_iv(input_date, strike_ratio, T, n_stocks, sessi
     return [ticker for ticker, _ in stock_ivs[:n_stocks]]
 
 
-# Example usage
 if __name__ == '__main__':
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='Fetch stocks with the highest put IV.')
+    parser.add_argument('input_date', type=str, help='Date to fetch data for (format YYYY-MM-DD)')
+    parser.add_argument('strike_ratio', type=float, help='Strike price ratio for IV calculation')
+    parser.add_argument('expiry_days', type=float, help='Days to expiry for the option')
+    parser.add_argument('n_stocks', type=int, help='Number of stocks to return with highest put IVs')
+
+    # Parse the command line arguments
+    args = parser.parse_args()
+
+    # Convert input_date argument to a date object
+    input_date = datetime.strptime(args.input_date, '%Y-%m-%d').date()
+
+    # Load environment variables
     load_dotenv()
 
     db_user = os.environ.get('DB_USER')
@@ -84,8 +97,8 @@ if __name__ == '__main__':
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    input_date = date(2024, 7, 12)
+    # Get the list of stocks with high put IV
     high_put_iv_stocks = ','.join(
-        get_stock_list_with_high_put_iv(input_date, 0.9, 7.0/365.0, 70, session))
-    print("stocks with highest put IVs on",
-          input_date, ":", high_put_iv_stocks)
+        get_stock_list_with_high_put_iv(input_date, args.strike_ratio, args.expiry_days, args.n_stocks, session)
+    )
+    print(f"Stocks with highest put IVs on {input_date}: {high_put_iv_stocks}")

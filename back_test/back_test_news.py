@@ -8,6 +8,7 @@ from high_iv import get_stock_list_with_high_put_iv
 from dotenv import load_dotenv
 import requests
 import os
+import argparse
 
 
 def get_last_trading_day_of_week(date, valid_days):
@@ -26,7 +27,8 @@ def get_sentiment_scores(tickers, start_date, end_date, session):
         .join(News, News.id == NewsSecurities.news_id)
         .filter(News.exch_time.between(start_date, end_date))
         .filter(NewsSecurities.ticker.in_(tickers))
-        .filter(News.author == 'Zacks Equity Research')
+        # .filter(News.author == 'Zacks Equity Research')
+        .filter(News.publisher_name == 'Yahoo')
         # .filter(NewsSecurities.ticker.not_in(['PXD']))
         .group_by(NewsSecurities.ticker)
         .all())
@@ -35,14 +37,35 @@ def get_sentiment_scores(tickers, start_date, end_date, session):
 # Function to backtest sentiment-based strategy
 
 
+# def get_stock_prices_on_day(tickers, day):
+#     str_day = datetime.strftime(day, '%Y-%m-%d')
+#     response = requests.post('http://127.0.0.1:8000/get_stock_price', json={
+#         'tickers': tickers,
+#         'start_date': str_day,
+#         'end_date': str_day
+#     })
+#     return response.json()
 def get_stock_prices_on_day(tickers, day):
     str_day = datetime.strftime(day, '%Y-%m-%d')
-    response = requests.post('http://127.0.0.1:8000/get_stock_price', json={
-        'tickers': tickers,
-        'start_date': str_day,
-        'end_date': str_day
-    })
-    return response.json()
+    try:
+        response = requests.post('http://127.0.0.1:8000/get_stock_price', json={
+            'tickers': tickers,
+            'start_date': str_day,
+            'end_date': str_day
+        })
+        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+
+        data = response.json()
+        if not data:
+            raise ValueError("No data returned from the server.")
+
+        return data
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred while fetching stock prices: {e}")
+        return None
+    except ValueError as e:
+        print(f"An error occurred: {e}")
+        return None
 
 
 def execute_trades(trade_info, trade_day):
@@ -74,6 +97,10 @@ def calculate_returns(portfolio, trade_day, unwind_day):
     short_prices_end = get_stock_prices_on_day(
         list(portfolio["short"].keys()), unwind_day)
 
+    if long_prices_end is None or short_prices_end is None:
+        print("Error: Failed to fetch stock prices.")
+        return None
+
     # Calculate returns for long and short positions
     long_returns = sum((long_prices_end[ticker][unwind_day_str]['close_adj'] - portfolio["long"][ticker][trade_day_str]['close_adj']) / portfolio["long"][ticker][trade_day_str]['close_adj']
                        for ticker in portfolio["long"]) / len(portfolio["long"])
@@ -87,7 +114,7 @@ def calculate_returns(portfolio, trade_day, unwind_day):
     return total_return
 
 
-def backtest_sentiment_strategy(start_date, end_date, n_days_sentiment, k_stocks, m_weeks_hold, p_weeks_delay, frac, session):
+def backtest_sentiment_strategy(start_date, end_date, start_days_sentiment, end_days_sentiment, k_stocks, m_weeks_hold, p_weeks_delay, frac, session):
     nyse = mcal.get_calendar('NYSE')
     extended_end_date = end_date + \
         timedelta(weeks=m_weeks_hold + p_weeks_delay)
@@ -177,11 +204,11 @@ def backtest_sentiment_strategy(start_date, end_date, n_days_sentiment, k_stocks
             #                   'MGY',
             #                   'NFG']
             high_iv_stocks = get_stock_list_with_high_put_iv(
-                day, 0.9, (next_last_trading_day - last_trading_day).days/365.0, k_stocks, session)
+                day, 0.9, (next_last_trading_day - last_trading_day).days, k_stocks, session)
             # high_iv_stocks = filter_stocks_based_on_return(
             #     day, k_stocks, session)
             sentiment_scores = get_sentiment_scores(
-                high_iv_stocks, day - timedelta(days=n_days_sentiment), day, session)
+                high_iv_stocks, day - timedelta(days=start_days_sentiment), day + timedelta(days=end_days_sentiment), session)
             # sentiment_scores = get_sentiment_scores(
             #     high_iv_stocks, day - timedelta(days=n_days_sentiment//2), day + timedelta(days=n_days_sentiment//2), session)
             # Exclude items with None values
@@ -218,7 +245,33 @@ def backtest_sentiment_strategy(start_date, end_date, n_days_sentiment, k_stocks
 
 # Example usage of the backtest function
 if __name__ == '__main__':
-    # Database connection setup
+    # Set up argument parser
+    parser = argparse.ArgumentParser(
+        description='Backtest sentiment-based strategy.')
+    parser.add_argument('start_date', type=str,
+                        help='Start date of the backtest (format YYYY-MM-DD)')
+    parser.add_argument('end_date', type=str,
+                        help='End date of the backtest (format YYYY-MM-DD)')
+    parser.add_argument('start_days_sentiment', type=int,
+                        help='Number of days before the trade day to start checking sentiment')
+    parser.add_argument('end_days_sentiment', type=int,
+                        help='Number of days after the trade day to end checking sentiment')
+    parser.add_argument('k_stocks', type=int,
+                        help='Number of stocks to analyze with high put IV')
+    parser.add_argument('m_weeks_hold', type=int,
+                        help='Number of weeks to hold the trades')
+    parser.add_argument('p_weeks_delay', type=int,
+                        help='Number of weeks delay before executing the trade')
+    parser.add_argument(
+        'frac', type=int, help='Fraction of stocks to go long and short')
+
+    args = parser.parse_args()
+
+    # Parse the command-line arguments and set up dates
+    start_date = datetime.strptime(args.start_date, '%Y-%m-%d').date()
+    end_date = datetime.strptime(args.end_date, '%Y-%m-%d').date()
+
+    # Load environment variables
     load_dotenv()
 
     db_user = os.environ.get('DB_USER')
@@ -232,15 +285,17 @@ if __name__ == '__main__':
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    start_date = date(2024, 7, 12)
-    end_date = date(2024, 7, 12)
-    n_days_sentiment = 13
-    k_stocks = 50
-    m_weeks_hold = 1
-    p_weeks_delay = 0
-    frac = 2
+    # Execute the backtest
     returns = backtest_sentiment_strategy(
-        start_date, end_date, n_days_sentiment, k_stocks, m_weeks_hold, p_weeks_delay, frac, session)
+        start_date, end_date, args.start_days_sentiment, args.end_days_sentiment, args.k_stocks, args.m_weeks_hold, args.p_weeks_delay, args.frac, session
+    )
+
+    # Print the results
     for ret in returns:
+        return_value = ret['return']
+        if return_value is None:
+            formatted_return = "N/A"
+        else:
+            formatted_return = f"{return_value:.2%}"
         print(
-            f"Date: {ret['date'].strftime('%Y-%m-%d')}, Return: {ret['return']:.2%}")
+            f"Date: {ret['date'].strftime('%Y-%m-%d')}, Return: {formatted_return}")

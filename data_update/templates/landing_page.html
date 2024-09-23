@@ -59,6 +59,14 @@
         margin-right: 5px; /* Add spacing between buttons */
       }
 
+      @media (min-width: 769px) {
+        .update-row {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 15px;
+        }
+      }
+
       /* Responsive adjustments */
       @media (max-width: 768px) {
         .container {
@@ -127,14 +135,21 @@
         <div class="col-12">
           <h2>Update Data</h2>
           <p>Asyncronous concurrent retrieval of various data...</p>
-          <a href="/update/tickers" class="btn btn-primary">Update Tickers</a>
-          <a href="/update/prices" class="btn btn-primary">Update Prices</a>
-          <a href="/update/iv_surfs" class="btn btn-primary"
-            >Update IV Surfaces</a
-          >
-          <a href="/update/news" class="btn btn-primary"
-            >Update News Articles</a
-          >
+          <div class="update-row">
+            <a href="/update/tickers" class="btn btn-primary">Update Tickers</a>
+            <a href="/update/prices" class="btn btn-primary">Update Prices</a>
+            <a href="/update/iv_surfs" class="btn btn-primary"
+              >Update IV Surfaces</a
+            >
+          </div>
+          <div class="update-row">
+            <a href="/update/news" class="btn btn-primary"
+              >Update News Articles</a
+            >
+            <a href="/update/sentiment" class="btn btn-primary"
+              >Update Sentiment Scores</a
+            >
+          </div>
         </div>
       </div>
 

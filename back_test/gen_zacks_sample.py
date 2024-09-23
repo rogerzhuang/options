@@ -7,6 +7,7 @@ from scipy.stats import zscore
 from tqdm import tqdm  # For displaying progress
 from datetime import datetime, timedelta
 import json
+import argparse
 
 
 def load_environment_variables():
@@ -97,4 +98,10 @@ def main(start_date):
 
 # Example usage
 if __name__ == "__main__":
-    main("2024-08-23")
+    # Set up argument parser
+    parser = argparse.ArgumentParser(
+        description='Generate Zacks sample.')
+    parser.add_argument('sample_date', type=str,
+                        help='Sample date (format YYYY-MM-DD)')
+    args = parser.parse_args()
+    main(args.sample_date)
