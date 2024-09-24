@@ -2,7 +2,9 @@ import requests
 from bs4 import BeautifulSoup
 import json
 from news import get_largest_text_block
+import logging
 
+logger = logging.getLogger(__name__)
 
 def get_article_content(url):
     headers = {
@@ -14,14 +16,14 @@ def get_article_content(url):
     if response.status_code == 302:
         redirect_url = response.headers['Location']
     else:
-        print(
+        logger.error(
             f"Error: Unexpected status code {response.status_code} for URL: {url}")
         return None
 
     # Now, fetch the actual article
     response = requests.get(redirect_url, headers=headers)
     if response.status_code != 200:
-        print(f"Error fetching the webpage: {redirect_url}")
+        logger.error(f"Error fetching the webpage: {redirect_url}")
         return None
 
     soup = BeautifulSoup(response.content, 'html.parser')
@@ -30,26 +32,26 @@ def get_article_content(url):
     if largest_text:
         return largest_text.strip()
     else:
-        print(f"Error extracting the content from: {redirect_url}")
+        logger.error(f"Error extracting the content from: {redirect_url}")
         return None
 
 
 def fetch_articles(api_url, source):
     response = requests.get(api_url)
     if response.status_code != 200:
-        print(f"Error fetching data from API: {response.status_code}")
+        logger.error(f"Error fetching data from API: {response.status_code}")
         return
 
     articles = json.loads(response.text)
     for article in articles:
         if article['source'] != source:
             continue
-        print(f"Processing article: {article['headline']}")
+        logger.info(f"Processing article: {article['headline']}")
         content = get_article_content(article['url'])
         if content:
-            print(f"Content:\n{content}\n{'='*50}\n")
+            logger.info(f"Content:\n{content}\n{'='*50}\n")
         else:
-            print(
+            logger.warning(
                 f"Failed to retrieve content for: {article['url']}\n{'='*50}\n")
 
 

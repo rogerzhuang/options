@@ -21,6 +21,9 @@ from openai import AsyncOpenAI
 import openai
 import re
 from itertools import cycle
+import logging
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -56,8 +59,8 @@ try:
         raise ValueError("No proxies fetched from the provided URL.")
     proxy_pool = cycle(PROXIES)
 except Exception as e:
-    print(f"Error setting up proxies: {e}")
-    print("Continuing without proxies...")
+    logger.error(f"Error setting up proxies: {e}")
+    logger.info("Continuing without proxies...")
     proxy_pool = cycle([None])
 
 
@@ -220,7 +223,7 @@ async def populate_tickers():
 
             # Check for errors in results
             if any('error' in result for result in results):
-                print([result['error']
+                logger.error([result['error']
                       for result in results if 'error' in result])
                 continue
 
@@ -361,7 +364,7 @@ async def populate_prices():
         for i, option_response in enumerate(option_responses):
             if 'error' in option_response:
                 # or handle the error in a way that's appropriate for your application
-                print(option_response['error'])
+                logger.error(option_response['error'])
                 continue
 
             option_ticker, expiry = option_data[i]
@@ -441,7 +444,7 @@ def populate_iv_surfs():
                     })
                 except Exception as e:
                     # Log the error and continue with the next date
-                    app.logger.error(
+                    logger.error(
                         f"Error getting IV surface for ticker {ticker} on date {current_datetime}: {e}")
 
             # Update the operations completed count and emit progress
@@ -579,12 +582,12 @@ async def get_content(session, url, semaphore):
             except (aiohttp.ClientError, aiohttp.ClientResponseError, asyncio.TimeoutError) as e:
                 if attempt < RETRY_ATTEMPTS - 1:
                     backoff_time = 2 ** attempt
-                    print(
+                    logger.info(
                         f"Attempt {attempt + 1}: Waiting {backoff_time} seconds before retrying for URL {url}")
                     await asyncio.sleep(backoff_time)
                     continue
                 else:
-                    print(f"Failed to fetch content for URL {url}: {e}")
+                    logger.error(f"Failed to fetch content for URL {url}: {e}")
                     return None
 
 
@@ -607,12 +610,12 @@ async def fetch_news(session, ticker, start_date, end_date, semaphore):
                     return [article for article in data if article['source'] == 'Yahoo']
             except (aiohttp.ClientError, aiohttp.ClientResponseError, asyncio.TimeoutError) as e:
                 if attempt < RETRY_ATTEMPTS - 1:
-                    print(
+                    logger.info(
                         f"Attempt {attempt + 1}: Waiting 60 seconds before retrying for ticker {ticker}")
                     await asyncio.sleep(60)
                     continue
                 else:
-                    print(f"Failed to fetch news for {ticker}: {e}")
+                    logger.error(f"Failed to fetch news for {ticker}: {e}")
                     return []
 
 
@@ -626,7 +629,7 @@ async def worker(session, queue, semaphore, contents, progress_data):
         progress_data['articles_processed'] += 1
         progress = (progress_data['articles_processed'] /
                     progress_data['total_articles']) * 100
-        print(f"Progress: {progress:.2f}%")
+        logger.info(f"Progress: {progress:.2f}%")
         app.socketio.emit('news_update_progress', {'progress': progress})
 
 
@@ -774,7 +777,7 @@ async def update_sentiment_scores():
 
     response = requests.post(f"{BCOMP_BASE_URL}/bproc", json=batch_data)
     job_id = response.json()['job_id']
-    print(f"Job ID: {job_id}")
+    logger.info(f"Job ID: {job_id}")
 
     while True:
         status_response = requests.get(f"{BCOMP_BASE_URL}/bstatus/{job_id}")

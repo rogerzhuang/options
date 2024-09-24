@@ -2,7 +2,9 @@ import argparse
 import requests
 import json
 import csv
+import logging
 
+logger = logging.getLogger(__name__)
 
 def read_tickers_from_csv(file_path):
     with open(file_path, mode='r') as file:
@@ -25,12 +27,12 @@ def update_tickers(tickers, start_date, end_date):
     response = requests.post(url, headers=headers, data=json.dumps(payload))
 
     if response.status_code == 200:
-        print("Tickers updated successfully!")
-        print("Response:", response.json())
+        logger.info("Tickers updated successfully!")
+        logger.info(f"Response: {response.json()}")
     else:
-        print("Failed to update tickers.")
-        print("Status Code:", response.status_code)
-        print("Response:", response.text)
+        logger.error("Failed to update tickers.")
+        logger.error(f"Status Code: {response.status_code}")
+        logger.error(f"Response: {response.text}")
 
 
 def update_prices(tickers, start_date, end_date):
@@ -47,12 +49,12 @@ def update_prices(tickers, start_date, end_date):
     response = requests.post(url, headers=headers, data=json.dumps(payload))
 
     if response.status_code == 200:
-        print("Prices updated successfully!")
-        print("Response:", response.json())
+        logger.info("Prices updated successfully!")
+        logger.info(f"Response: {response.json()}")
     else:
-        print("Failed to update prices.")
-        print("Status Code:", response.status_code)
-        print("Response:", response.text)
+        logger.error("Failed to update prices.")
+        logger.error(f"Status Code: {response.status_code}")
+        logger.error(f"Response: {response.text}")
 
 
 def update_iv_surfs(tickers, start_date, end_date):
@@ -69,12 +71,12 @@ def update_iv_surfs(tickers, start_date, end_date):
     response = requests.post(url, headers=headers, data=json.dumps(payload))
 
     if response.status_code == 200:
-        print("IV Surfaces updated successfully!")
-        print("Response:", response.json())
+        logger.info("IV Surfaces updated successfully!")
+        logger.info(f"Response: {response.json()}")
     else:
-        print("Failed to update IV surfaces.")
-        print("Status Code:", response.status_code)
-        print("Response:", response.text)
+        logger.error("Failed to update IV surfaces.")
+        logger.error(f"Status Code: {response.status_code}")
+        logger.error(f"Response: {response.text}")
 
 
 if __name__ == "__main__":

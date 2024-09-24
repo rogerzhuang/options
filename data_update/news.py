@@ -1,6 +1,8 @@
 import requests
 from bs4 import BeautifulSoup
+import logging
 
+logger = logging.getLogger(__name__)
 
 def get_largest_text_block(soup):
     ignored_classes = ["footer", "sidebar", "header", "ad", "menu"]
@@ -43,7 +45,7 @@ if __name__ == '__main__':
     }
     response = requests.get(URL, headers=headers)
     if response.status_code != 200:
-        print("Error fetching the webpage.")
+        logger.error("Error fetching the webpage.")
     else:
         soup = BeautifulSoup(response.content, 'html.parser')
 
@@ -51,6 +53,6 @@ if __name__ == '__main__':
 
         largest_text, tag = get_largest_text_block(soup)
         if largest_text:
-            print(largest_text)
+            logger.info(largest_text)
         else:
-            print("Error extracting the content.")
+            logger.error("Error extracting the content.")
