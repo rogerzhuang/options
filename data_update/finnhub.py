@@ -4,6 +4,7 @@ import json
 from news import get_largest_text_block
 import logging
 
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 def get_article_content(url):

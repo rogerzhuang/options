@@ -4,6 +4,7 @@ import json
 import csv
 import logging
 
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 def read_tickers_from_csv(file_path):

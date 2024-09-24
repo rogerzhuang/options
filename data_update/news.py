@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import logging
 
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 def get_largest_text_block(soup):

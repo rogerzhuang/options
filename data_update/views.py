@@ -23,6 +23,7 @@ import re
 from itertools import cycle
 import logging
 
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -224,7 +225,7 @@ async def populate_tickers():
             # Check for errors in results
             if any('error' in result for result in results):
                 logger.error([result['error']
-                      for result in results if 'error' in result])
+                              for result in results if 'error' in result])
                 continue
 
             option_tickers_from_results = set()
