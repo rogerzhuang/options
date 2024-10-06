@@ -777,8 +777,14 @@ async def update_sentiment_scores():
             })
 
     response = requests.post(f"{BCOMP_BASE_URL}/bproc", json=batch_data)
-    job_id = response.json()['job_id']
-    logger.info(f"Job ID: {job_id}")
+    response_data = response.json()
+    
+    if 'job_id' in response_data:
+        job_id = response_data['job_id']
+        logger.info(f"Job ID: {job_id}")
+    else:
+        logger.info("No job_id in response. Batch data may be empty.")
+        return jsonify({'status': 'success', 'message': 'No data to process.'}), 200
 
     while True:
         status_response = requests.get(f"{BCOMP_BASE_URL}/bstatus/{job_id}")
