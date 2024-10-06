@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import pickle
 import base64
@@ -13,6 +13,9 @@ import argparse
 
 
 def get_stock_list_with_high_put_iv(input_date, strike_ratio, expiry_days, n_stocks, session):
+    # Adjust input_date and expiry_days if input_date is not a trading day
+    input_date, expiry_days = adjust_for_non_trading_day(input_date, expiry_days, session)
+
     T = expiry_days / 365.0
 
     # Load date ranges and tickers from JSON
@@ -68,6 +71,19 @@ def get_stock_list_with_high_put_iv(input_date, strike_ratio, expiry_days, n_sto
 
     # Return list of tickers with highest put IVs
     return [ticker for ticker, _ in stock_ivs[:n_stocks]]
+
+
+def is_trading_day(date, session):
+    # Check if the given date is a trading day by querying the HistPrice1D table
+    return session.query(HistPrice1D).filter(HistPrice1D.exch_time == date).count() > 0
+
+
+def adjust_for_non_trading_day(input_date, expiry_days, session):
+    # If the input date is not a trading day, adjust to the previous trading day
+    while not is_trading_day(input_date, session):
+        input_date -= timedelta(days=1)
+        expiry_days += 1
+    return input_date, expiry_days
 
 
 if __name__ == '__main__':

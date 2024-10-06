@@ -114,8 +114,18 @@ def calculate_returns(portfolio, trade_day, unwind_day):
     return total_return
 
 
+def get_friday_of_week(date):
+    """Get the Friday of the week for the given date."""
+    return date + timedelta(days=(4 - date.weekday()))
+
+
 def backtest_sentiment_strategy(start_date, end_date, start_days_sentiment, end_days_sentiment, k_stocks, m_weeks_hold, p_weeks_delay, frac, session):
     nyse = mcal.get_calendar('NYSE')
+
+    # Adjust start_date to the previous trading day if it's not a trading day
+    while start_date not in nyse.valid_days(start_date=start_date, end_date=start_date).date:
+        start_date -= timedelta(days=1)
+
     extended_end_date = end_date + \
         timedelta(weeks=m_weeks_hold + p_weeks_delay)
     valid_days = nyse.valid_days(
@@ -128,117 +138,55 @@ def backtest_sentiment_strategy(start_date, end_date, start_days_sentiment, end_
 
     for day in backtest_days:
         last_trading_day = get_last_trading_day_of_week(day, valid_days)
-
-        # On each last trading day of the week, form the portfolio
         if day == last_trading_day:
-            next_last_trading_day = get_last_trading_day_of_week(
-                last_trading_day + timedelta(weeks=1), valid_days)
-            # high_iv_stocks = ['AIRC',
-            #                   'PB',
-            #                   'GXO',
-            #                   'TRNO',
-            #                   'LNTH',
-            #                   'SON',
-            #                   'MTG',
-            #                   'BMI',
-            #                   'SIGI',
-            #                   'VKTX',
-            #                   'VMI',
-            #                   'SSB',
-            #                   'LYFT',
-            #                   'DJT',
-            #                   'RBRK',
-            #                   'DAR',
-            #                   'FAF',
-            #                   'SNV',
-            #                   'ALGM',
-            #                   'VERX',
-            #                   'SM',
-            #                   'VVV',
-            #                   'JXN',
-            #                   'VNO',
-            #                   'FSK',
-            #                   'SRCL',
-            #                   'CBT',
-            #                   'NSA',
-            #                   'RITM',
-            #                   'LOAR',
-            #                   'RRR',
-            #                   'XRAY',
-            #                   'HIMS',
-            #                   'LNC',
-            #                   'SWX',
-            #                   'VFC',
-            #                   'BEPC',
-            #                   'SEE',
-            #                   'COOP',
-            #                   'MMS',
-            #                   'RCM',
-            #                   'ALK',
-            #                   'HXL',
-            #                   'ZWS',
-            #                   'R',
-            #                   'OGN',
-            #                   'TNET',
-            #                   'CWAN',
-            #                   'FSS',
-            #                   'LANC',
-            #                   'BBIO',
-            #                   'KBH',
-            #                   'FNMAL',
-            #                   'AL',
-            #                   'ONB',
-            #                   'MDU',
-            #                   'CVLT',
-            #                   'MOD',
-            #                   'DOCS',
-            #                   'PBF',
-            #                   'BYD',
-            #                   'CWEN',
-            #                   'TDW',
-            #                   'NUVL',
-            #                   'M',
-            #                   'NEU',
-            #                   'AWI',
-            #                   'TEM',
-            #                   'MGY',
-            #                   'NFG']
+            friday_of_week = get_friday_of_week(day)
+
+            # Always use expiry_days = 7, adjustments are handled inside the function
             high_iv_stocks = get_stock_list_with_high_put_iv(
-                day, 0.9, (next_last_trading_day - last_trading_day).days, k_stocks, session)
-            # high_iv_stocks = filter_stocks_based_on_return(
-            #     day, k_stocks, session)
+                friday_of_week, 0.9, 7, k_stocks, session)
+
+            sentiment_start_date = friday_of_week - \
+                timedelta(days=start_days_sentiment)
+            sentiment_end_date = friday_of_week + \
+                timedelta(days=end_days_sentiment)
+
             sentiment_scores = get_sentiment_scores(
-                high_iv_stocks, day - timedelta(days=start_days_sentiment), day + timedelta(days=end_days_sentiment), session)
-            # sentiment_scores = get_sentiment_scores(
-            #     high_iv_stocks, day - timedelta(days=n_days_sentiment//2), day + timedelta(days=n_days_sentiment//2), session)
-            # Exclude items with None values
+                high_iv_stocks, sentiment_start_date, sentiment_end_date, session)
             sentiment_scores = {ticker: score for ticker,
                                 score in sentiment_scores.items() if score}
 
             sorted_stocks = sorted(
                 sentiment_scores.items(), key=lambda x: x[1], reverse=True)
+            num_stocks = len(sorted_stocks) // frac
             long_stocks = [{'ticker': stock[0], 'position': 'long'}
-                           for stock in sorted_stocks[:len(sorted_stocks) // frac]]
+                           for stock in sorted_stocks[:num_stocks]]
             short_stocks = [{'ticker': stock[0], 'position': 'short'}
-                            for stock in sorted_stocks[-(len(sorted_stocks) // frac):]]
+                            for stock in sorted_stocks[-num_stocks:]]
 
-            # Set trade day as the next last trading day of the week
-            next_week = day + timedelta(weeks=p_weeks_delay)
-            next_trade_day = get_last_trading_day_of_week(
-                next_week, valid_days)
-            trades_to_execute.append(
-                (long_stocks + short_stocks, next_trade_day))
+            delay_days = timedelta(weeks=p_weeks_delay)
+            trade_week = day + delay_days
+            trade_day = get_last_trading_day_of_week(trade_week, valid_days)
 
-    # Execute trades and calculate returns
+            trades_to_execute.append((long_stocks + short_stocks, trade_day))
+
     for trade, trade_day in trades_to_execute:
-        portfolio = execute_trades(trade, trade_day)
+        if trade_day:
+            portfolio = execute_trades(trade, trade_day)
 
-        unwind_day = get_last_trading_day_of_week(
-            trade_day + timedelta(weeks=m_weeks_hold), valid_days)
-        if unwind_day:
-            total_return = calculate_returns(portfolio, trade_day, unwind_day)
-            print(f"Unwinding on {unwind_day} with return {total_return}")
-            returns_list.append({"date": unwind_day, "return": total_return})
+            hold_days = timedelta(weeks=m_weeks_hold)
+            unwind_week = trade_day + hold_days
+            unwind_day = get_last_trading_day_of_week(unwind_week, valid_days)
+            if unwind_day:
+                total_return = calculate_returns(
+                    portfolio, trade_day, unwind_day)
+                print(
+                    f"Unwinding on {unwind_day} with return {total_return:.2%}")
+                returns_list.append(
+                    {"date": unwind_day, "return": total_return})
+            else:
+                print(f"No unwind day found for trade executed on {trade_day}")
+        else:
+            print(f"No trade day found for trades scheduled after {day}")
 
     return returns_list
 

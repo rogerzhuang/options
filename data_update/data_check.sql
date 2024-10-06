@@ -225,3 +225,11 @@ WHERE EXISTS (
     AND news.exch_time <= '2024-05-04'
     AND news_securities.sentiment IS NULL
 );
+
+
+SELECT TOP 10 s.ticker, n.title, n.article_url, n.content, n.published_utc, ns.sentiment
+FROM stocks s
+INNER JOIN news_securities ns ON s.ticker = ns.ticker
+INNER JOIN news n ON n.id = ns.news_id
+WHERE len(n.id) < 10 and ns.sentiment IS NOT NULL and s.ticker = 'MU'
+ORDER BY n.published_utc DESC;
