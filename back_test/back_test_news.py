@@ -28,7 +28,7 @@ def get_sentiment_scores(tickers, start_date, end_date, session):
         .filter(News.exch_time.between(start_date, end_date))
         .filter(NewsSecurities.ticker.in_(tickers))
         # .filter(News.author == 'Zacks Equity Research')
-        .filter(News.publisher_name == 'Yahoo')
+        # .filter(News.publisher_name == 'Yahoo')
         # .filter(NewsSecurities.ticker.not_in(['PXD']))
         .group_by(NewsSecurities.ticker)
         .all())
@@ -157,7 +157,7 @@ def backtest_sentiment_strategy(start_date, end_date, start_days_sentiment, end_
 
             sorted_stocks = sorted(
                 sentiment_scores.items(), key=lambda x: x[1], reverse=True)
-            num_stocks = len(sorted_stocks) // frac
+            num_stocks = int(len(sorted_stocks) / frac)
             long_stocks = [{'ticker': stock[0], 'position': 'long'}
                            for stock in sorted_stocks[:num_stocks]]
             short_stocks = [{'ticker': stock[0], 'position': 'short'}
@@ -211,7 +211,7 @@ if __name__ == '__main__':
     parser.add_argument('p_weeks_delay', type=int,
                         help='Number of weeks delay before executing the trade')
     parser.add_argument(
-        'frac', type=int, help='Fraction of stocks to go long and short')
+        'frac', type=float, help='Fraction of stocks to go long and short')
 
     args = parser.parse_args()
 
