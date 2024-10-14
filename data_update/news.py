@@ -1,6 +1,8 @@
 import requests
 from bs4 import BeautifulSoup
 import logging
+import json
+import re
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -33,10 +35,42 @@ def get_largest_text_block(soup):
     # Sort the texts by their length (longest first)
     all_texts.sort(key=lambda x: x[0], reverse=True)
 
+    # Extract author and publisher
+    author = ''
+    publisher = ''
+    ld_json = soup.find('script', type='application/ld+json')
+    if ld_json:
+        try:
+            data = json.loads(ld_json.string)
+            if isinstance(data, list):
+                data = data[0]
+            if 'author' in data:
+                if isinstance(data['author'], dict):
+                    author = data['author'].get('name', '')
+                elif isinstance(data['author'], str):
+                    author = data['author']
+            if 'publisher' in data:
+                if isinstance(data['publisher'], dict):
+                    publisher = data['publisher'].get('name', '')
+                elif isinstance(data['publisher'], str):
+                    publisher = data['publisher']
+        except json.JSONDecodeError:
+            pass
+
+    if not author:
+        author_meta = soup.find('meta', attrs={'name': 'author'})
+        if author_meta:
+            author = author_meta.get('content', '')
+
+    if not publisher:
+        publisher_meta = soup.find('meta', attrs={'property': 'og:site_name'})
+        if publisher_meta:
+            publisher = publisher_meta.get('content', '')
+
     if all_texts:
-        # Return the longest text and its corresponding tag
-        return all_texts[0][1], all_texts[0][2]
-    return None, None
+        # Return the longest text, its corresponding tag, author, and publisher
+        return all_texts[0][1], all_texts[0][2], author, publisher
+    return None, None, author, publisher
 
 
 if __name__ == '__main__':
@@ -52,7 +86,7 @@ if __name__ == '__main__':
 
         # ... after fetching the content and creating the soup object
 
-        largest_text, tag = get_largest_text_block(soup)
+        largest_text, tag, author, publisher = get_largest_text_block(soup)
         if largest_text:
             logger.info(largest_text)
         else:

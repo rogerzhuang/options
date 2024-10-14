@@ -570,8 +570,9 @@ async def get_content(session, url, semaphore):
                                 )
                             content = await content_response.text()
                             soup = BeautifulSoup(content, 'html.parser')
-                            largest_text, tag = get_largest_text_block(soup)
-                            return largest_text.strip() if largest_text else None
+                            largest_text, tag, author, publisher = get_largest_text_block(
+                                soup)
+                            return largest_text.strip() if largest_text else None, author, publisher
                     else:
                         raise aiohttp.ClientResponseError(
                             request_info=response.request_info,
@@ -589,7 +590,7 @@ async def get_content(session, url, semaphore):
                     continue
                 else:
                     logger.error(f"Failed to fetch content for URL {url}: {e}")
-                    return None
+                    return None, None, None
 
 
 async def fetch_news(session, ticker, start_date, end_date, semaphore):
@@ -623,8 +624,8 @@ async def fetch_news(session, ticker, start_date, end_date, semaphore):
 async def worker(session, queue, semaphore, contents, progress_data):
     while True:
         article = await queue.get()
-        content = await get_content(session, article['url'], semaphore)
-        contents.append((article, content))
+        content, author, publisher = await get_content(session, article['url'], semaphore)
+        contents.append((article, content, author, publisher))
         queue.task_done()
 
         progress_data['articles_processed'] += 1
@@ -675,56 +676,63 @@ async def populate_news():
                            for response in responses for article in response}
         all_tickers = set(tickers)
 
-        existing_articles = News.query.filter(
-            News.id.in_(all_article_ids)).all()
         existing_tickers = Securities.query.filter(
             Securities.ticker.in_(all_tickers)).all()
-        existing_news_securities = NewsSecurities.query.filter(
-            NewsSecurities.news_id.in_(all_article_ids)).all()
-
-        existing_article_ids = {str(article.id)
-                                for article in existing_articles}
         ticker_to_security = {
             ticker.ticker: ticker for ticker in existing_tickers}
-        existing_news_securities_set = {
-            (str(ns.news_id), ns.ticker) for ns in existing_news_securities}
 
-        for article, content in contents:
-            published_utc = datetime.fromtimestamp(
-                article['datetime']).replace(tzinfo=timezone('UTC'))
-            exch_time = published_utc.astimezone(timezone(
-                'US/Eastern')).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
+        # Process articles in batches
+        batch_size = 1000
+        for i in range(0, len(all_article_ids), batch_size):
+            batch_ids = list(all_article_ids)[i:i+batch_size]
 
-            if str(article['id']) not in existing_article_ids:
-                news_entry = News(
-                    id=str(article['id']),
-                    exch_time=exch_time,
-                    published_utc=published_utc.replace(tzinfo=None),
-                    publisher_name='Yahoo',
-                    title=article['headline'],
-                    author='',  # Finnhub doesn't provide author information
-                    article_url=article['url'],
-                    content=content
-                )
-                db.session.add(news_entry)
-                existing_article_ids.add(str(article['id']))
+            existing_articles = News.query.filter(
+                News.id.in_(batch_ids)).all()
+            existing_news_securities = NewsSecurities.query.filter(
+                NewsSecurities.news_id.in_(batch_ids)).all()
 
-            for ticker in article['related'].split(','):
-                if ticker in ticker_to_security and (str(article['id']), ticker) not in existing_news_securities_set:
-                    news_security_entry = NewsSecurities(
-                        news_id=str(article['id']),
-                        ticker=ticker,
-                        sentiment=None  # We'll update this in a separate route
-                    )
-                    db.session.add(news_security_entry)
-                    existing_news_securities_set.add(
-                        (str(article['id']), ticker))
+            existing_article_ids = {str(article.id)
+                                    for article in existing_articles}
+            existing_news_securities_set = {
+                (str(ns.news_id), ns.ticker) for ns in existing_news_securities}
 
-        try:
-            db.session.commit()
-        except IntegrityError as e:
-            db.session.rollback()
-            return jsonify({'status': 'error', 'message': 'Database integrity error occurred.'}), 500
+            for article, content, author, publisher in contents:
+                if str(article['id']) in batch_ids:
+                    published_utc = datetime.fromtimestamp(
+                        article['datetime']).replace(tzinfo=timezone('UTC'))
+                    exch_time = published_utc.astimezone(timezone(
+                        'US/Eastern')).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
+
+                    if str(article['id']) not in existing_article_ids:
+                        news_entry = News(
+                            id=str(article['id']),
+                            exch_time=exch_time,
+                            published_utc=published_utc.replace(tzinfo=None),
+                            publisher_name=publisher or None,
+                            title=article['headline'],
+                            author=author or None,
+                            article_url=article['url'],
+                            content=content
+                        )
+                        db.session.add(news_entry)
+                        existing_article_ids.add(str(article['id']))
+
+                    for ticker in article['related'].split(','):
+                        if ticker in ticker_to_security and (str(article['id']), ticker) not in existing_news_securities_set:
+                            news_security_entry = NewsSecurities(
+                                news_id=str(article['id']),
+                                ticker=ticker,
+                                sentiment=None
+                            )
+                            db.session.add(news_security_entry)
+                            existing_news_securities_set.add(
+                                (str(article['id']), ticker))
+
+            try:
+                db.session.commit()
+            except IntegrityError as e:
+                db.session.rollback()
+                return jsonify({'status': 'error', 'message': f'Database integrity error occurred: {str(e)}'}), 500
 
     return jsonify({'status': 'success', 'message': 'News data updated.'})
 
@@ -740,94 +748,121 @@ async def update_sentiment_scores():
 
     end_date = datetime.combine(end_date, datetime.max.time())
 
-    news_securities = db.session.query(NewsSecurities).join(News).filter(
-        NewsSecurities.ticker.in_(tickers),
-        News.published_utc.between(start_date, end_date),
-        NewsSecurities.sentiment.is_(None)
-    ).all()
-
-    news_ids = [ns.news_id for ns in news_securities]
-    news_contents = News.query.filter(News.id.in_(news_ids)).all()
-
-    content_dict = {news.id: news.content for news in news_contents}
-
-    batch_data = {
-        "batch": []
-    }
-
-    for ns in news_securities:
-        content = content_dict.get(ns.news_id)
-        if content:
-            batch_data["batch"].append({
-                "custom_id": f"request|:|{ns.news_id}|:|{ns.ticker}",
-                "method": "POST",
-                "url": "/v1/chat/completions",
-                "body": {
-                    "model": "gpt-4o",
-                    "messages": [{
-                        "role": "system",
-                        "content": "You are a sentiment analysis AI that provides numerical outputs."
-                    }, {
-                        "role": "user",
-                        "content": f"Calculate the integer sentiment score for the following news article related to the stock ticker {ns.ticker} on a scale from 1 to 100, where 1 is most negative and 100 is most positive. IN YOUR RESPONSE, PLEASE PRODUCE THE SCORE ONLY:\n\n{content}"
-                    }],
-                    "temperature": 0,
-                    "seed": 0
-                }
-            })
-
-    response = requests.post(f"{BCOMP_BASE_URL}/bproc", json=batch_data)
-    response_data = response.json()
-    
-    if 'job_id' in response_data:
-        job_id = response_data['job_id']
-        logger.info(f"Job ID: {job_id}")
-    else:
-        logger.info("No job_id in response. Batch data may be empty.")
-        return jsonify({'status': 'success', 'message': 'No data to process.'}), 200
+    # Fetch all relevant news_securities in batches
+    batch_size = 1000
+    offset = 0
+    all_news_securities = []
 
     while True:
-        status_response = requests.get(f"{BCOMP_BASE_URL}/bstatus/{job_id}")
-        status_data = status_response.json()
+        batch = db.session.query(NewsSecurities).join(News).filter(
+            NewsSecurities.ticker.in_(tickers),
+            News.published_utc.between(start_date, end_date),
+            NewsSecurities.sentiment.is_(None)
+        ).order_by(News.published_utc).offset(offset).limit(batch_size).all()
 
-        if status_data['state'] == 'SUCCESS':
-            sentiment_scores = {}
-            for result in status_data['result']:
-                if result['error'] is None and result['response']['status_code'] == 200:
-                    sentiment_text = result['response']['body']['choices'][0]['message']['content'].strip(
-                    )
-                    match = re.search(r'\b\d+\b', sentiment_text)
-                    if match:
-                        sentiment_score = int(match.group())
-                        if 1 <= sentiment_score <= 100:
-                            custom_id = result['custom_id']
-                            sentiment_scores[custom_id] = sentiment_score
+        if not batch:
+            break
 
-            # Prepare bulk update data
-            bulk_update_data = []
-            for custom_id, sentiment_score in sentiment_scores.items():
-                _, news_id, ticker = custom_id.split('|:|')
-                bulk_update_data.append({
-                    'news_id': news_id,
-                    'ticker': ticker,
-                    'sentiment': sentiment_score
-                })
+        all_news_securities.extend(batch)
+        offset += batch_size
 
-            try:
-                # Perform bulk update
-                db.session.bulk_update_mappings(
-                    NewsSecurities, bulk_update_data)
-                db.session.commit()
-            except IntegrityError as e:
-                db.session.rollback()
-                return jsonify({'status': 'error', 'message': 'Database integrity error occurred.'}), 500
+        if len(batch) < batch_size:
+            break
 
-            return jsonify({'status': 'success', 'message': 'Sentiment scores updated.'})
+    if not all_news_securities:
+        return jsonify({'status': 'success', 'message': 'No data to process.'})
 
-        elif status_data['state'] == 'FAILURE':
-            return jsonify({'status': 'error', 'message': 'Failed to retrieve sentiment scores.'}), 500
-        else:  # PENDING
-            await asyncio.sleep(15)  # Wait for 15 seconds before polling again
+    # Process news in smaller batches
+    processing_batch_size = 500
+    for i in range(0, len(all_news_securities), processing_batch_size):
+        batch_news_securities = all_news_securities[i:i+processing_batch_size]
+        news_ids = [ns.news_id for ns in batch_news_securities]
+
+        news_contents = News.query.filter(News.id.in_(news_ids)).all()
+        content_dict = {news.id: news.content for news in news_contents}
+
+        batch_data = {
+            "batch": [
+                {
+                    "custom_id": f"request|:|{ns.news_id}|:|{ns.ticker}",
+                    "method": "POST",
+                    "url": "/v1/chat/completions",
+                    "body": {
+                        "model": "gpt-4o-mini",
+                        "messages": [{
+                            "role": "system",
+                            "content": "You are a sentiment analysis AI that provides numerical outputs."
+                        }, {
+                            "role": "user",
+                            "content": f"Calculate the integer sentiment score for the following news article related to the stock ticker {ns.ticker} on a scale from 1 to 100, where 1 is most negative and 100 is most positive. IN YOUR RESPONSE, PLEASE PRODUCE THE SCORE ONLY:\n\n{content_dict.get(ns.news_id, '')}"
+                        }],
+                        "temperature": 0,
+                        "seed": 0
+                    }
+                } for ns in batch_news_securities if ns.news_id in content_dict
+            ]
+        }
+
+        response = requests.post(f"{BCOMP_BASE_URL}/bproc", json=batch_data)
+        response_data = response.json()
+
+        if 'job_id' not in response_data:
+            continue
+
+        job_id = response_data['job_id']
+        logger.info(f"Job ID: {job_id}")
+
+        while True:
+            status_response = requests.get(
+                f"{BCOMP_BASE_URL}/bstatus/{job_id}")
+            status_data = status_response.json()
+
+            if status_data['state'] == 'SUCCESS':
+                sentiment_scores = {}
+                for result in status_data['result']:
+                    if result['error'] is None and result['response']['status_code'] == 200:
+                        sentiment_text = result['response']['body']['choices'][0]['message']['content'].strip(
+                        )
+                        match = re.search(r'\b\d+\b', sentiment_text)
+                        if match:
+                            sentiment_score = int(match.group())
+                            if 1 <= sentiment_score <= 100:
+                                custom_id = result['custom_id']
+                                sentiment_scores[custom_id] = sentiment_score
+
+                # Update sentiment scores in smaller batches
+                update_batch_size = 500
+                for j in range(0, len(batch_news_securities), update_batch_size):
+                    update_batch = batch_news_securities[j:j+update_batch_size]
+                    bulk_update_data = []
+                    for ns in update_batch:
+                        custom_id = f"request|:|{ns.news_id}|:|{ns.ticker}"
+                        if custom_id in sentiment_scores:
+                            bulk_update_data.append({
+                                'news_id': ns.news_id,
+                                'ticker': ns.ticker,
+                                'sentiment': sentiment_scores[custom_id]
+                            })
+
+                    if bulk_update_data:
+                        try:
+                            db.session.bulk_update_mappings(
+                                NewsSecurities, bulk_update_data)
+                            db.session.commit()
+                        except IntegrityError as e:
+                            db.session.rollback()
+                            logger.error(
+                                f"Database integrity error occurred: {str(e)}")
+
+                break
+            elif status_data['state'] == 'FAILURE':
+                logger.error('Failed to retrieve sentiment scores.')
+                break
+            else:  # PENDING
+                # Wait for 15 seconds before polling again
+                await asyncio.sleep(15)
+
+    return jsonify({'status': 'success', 'message': 'Sentiment scores updated.'})
 
 
 @main.route('/update/tickers', methods=['GET'])
