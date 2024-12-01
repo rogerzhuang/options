@@ -11,12 +11,14 @@ from dotenv import load_dotenv
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+
 def get_fridays(start_date, end_date):
     current_date = start_date
     while current_date <= end_date:
         if current_date.weekday() == 4:  # Friday is 4
             yield current_date
         current_date += timedelta(days=1)
+
 
 def update_news(tickers, start_date, end_date):
     url = "http://127.0.0.1:5000/populate_news"
@@ -28,6 +30,7 @@ def update_news(tickers, start_date, end_date):
     response = requests.post(url, json=payload)
     return response.json()
 
+
 def update_sentiments(tickers, start_date, end_date):
     url = "http://127.0.0.1:5000/update_sentiment_scores"
     payload = {
@@ -38,7 +41,19 @@ def update_sentiments(tickers, start_date, end_date):
     response = requests.post(url, json=payload)
     return response.json()
 
-def main(start_date, end_date, update_news_flag, update_sentiments_flag):
+
+def update_impact(tickers, start_date, end_date):
+    url = "http://127.0.0.1:5000/update_impact_scores"
+    payload = {
+        "tickers": tickers,
+        "start_date": start_date.strftime('%Y-%m-%d'),
+        "end_date": end_date.strftime('%Y-%m-%d')
+    }
+    response = requests.post(url, json=payload)
+    return response.json()
+
+
+def main(start_date, end_date, update_news_flag, update_sentiments_flag, update_impact_flag):
     # Load environment variables
     load_dotenv()
 
@@ -66,29 +81,42 @@ def main(start_date, end_date, update_news_flag, update_sentiments_flag):
 
             # Get high IV tickers
             high_iv_tickers = get_stock_list_with_high_put_iv(
-                friday, 0.9, 7, 70, db_session)
+                friday, 0.9, 7, 75, db_session)
 
             # Calculate date range for news and sentiments
             news_start_date = friday - timedelta(days=13)  # Two Saturdays ago
-            news_end_date = friday + timedelta(days=6)  # Next Thursday or today
+            # Next Thursday or today
+            news_end_date = friday + timedelta(days=6)
 
             if update_news_flag:
-                print(f"Updating news for {len(high_iv_tickers)} tickers from {news_start_date} to {news_end_date}")
-                result = update_news(high_iv_tickers, news_start_date, news_end_date)
+                print(
+                    f"Updating news for {len(high_iv_tickers)} tickers from {news_start_date} to {news_end_date}")
+                result = update_news(
+                    high_iv_tickers, news_start_date, news_end_date)
                 print(f"News update result: {result}")
 
             if update_sentiments_flag:
-                print(f"Updating sentiments for {len(high_iv_tickers)} tickers from {news_start_date} to {news_end_date}")
-                result = update_sentiments(high_iv_tickers, news_start_date, news_end_date)
+                print(
+                    f"Updating sentiments for {len(high_iv_tickers)} tickers from {news_start_date} to {news_end_date}")
+                result = update_sentiments(
+                    high_iv_tickers, news_start_date, news_end_date)
                 print(f"Sentiment update result: {result}")
+
+            if update_impact_flag:
+                print(
+                    f"Updating impact for {len(high_iv_tickers)} tickers from {news_start_date} to {news_end_date}")
+                result = update_impact(
+                    high_iv_tickers, news_start_date, news_end_date)
+                print(f"Impact update result: {result}")
 
     finally:
         # Change back to the original directory
         os.chdir(original_dir)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Update historical news and sentiments for high IV stocks")
+        description="Update historical news, sentiments, and impact for high IV stocks")
     parser.add_argument("start_date", type=lambda s: datetime.strptime(
         s, '%Y-%m-%d').date(), help="Start date (YYYY-MM-DD)")
     parser.add_argument("end_date", type=lambda s: datetime.strptime(
@@ -96,11 +124,13 @@ if __name__ == "__main__":
     parser.add_argument("--news", action="store_true", help="Update news")
     parser.add_argument("--sentiments", action="store_true",
                         help="Update sentiments")
+    parser.add_argument("--impact", action="store_true",
+                        help="Update impact scores")
 
     args = parser.parse_args()
 
-    if not (args.news or args.sentiments):
+    if not (args.news or args.sentiments or args.impact):
         parser.error(
-            "At least one of --news or --sentiments must be specified.")
+            "At least one of --news, --sentiments, or --impact must be specified.")
 
-    main(args.start_date, args.end_date, args.news, args.sentiments)
+    main(args.start_date, args.end_date, args.news, args.sentiments, args.impact)

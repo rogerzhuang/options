@@ -321,6 +321,12 @@ async def populate_prices():
         # Fetch stock historical data
         stock_response, stock_adj_response = await get_concurrent_stock_data(ticker, start_date, end_date)
 
+        # Check if the stock data is available
+        if 'results' not in stock_response or 'results' not in stock_adj_response:
+            logger.warning(
+                f"No data available for ticker {ticker}. Skipping...")
+            continue
+
         # Initializing existing_prices with the existing prices of the stock ticker
         existing_prices = set([(price.ticker, price.exch_time) for price in db.session.query(
             HistPrice1D.ticker, HistPrice1D.exch_time).filter(HistPrice1D.ticker == ticker).all()])
@@ -393,12 +399,16 @@ async def populate_prices():
         # Bulk insert
         prices_dicts = [instance_to_dict(price) for price in prices_to_add]
 
-        try:
-            db.session.bulk_insert_mappings(HistPrice1D, prices_dicts)
-            db.session.commit()
-        except IntegrityError:
-            db.session.rollback()
-            return jsonify({"message": f"Data insertion failed for {ticker} due to integrity constraints!"})
+        if prices_dicts:
+            try:
+                db.session.bulk_insert_mappings(HistPrice1D, prices_dicts)
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                logger.warning(
+                    f"Data insertion failed for {ticker} due to integrity constraints. Skipping...")
+        else:
+            logger.info(f"No new price data to insert for {ticker}")
 
     return jsonify({"message": "Price data populated successfully!"})
 
@@ -637,12 +647,16 @@ async def worker(session, queue, semaphore, contents, progress_data):
 
 @main.route('/populate_news', methods=['POST'])
 async def populate_news():
+    logging.info("Starting populate_news function")
     data = request.json
     tickers = data.get('tickers', [])
     start_date = datetime.strptime(data.get('start_date', (datetime.now(
     ) - timedelta(days=30)).strftime('%Y-%m-%d')), '%Y-%m-%d')
     end_date = datetime.strptime(
         data.get('end_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d')
+
+    logging.info(
+        f"Fetching news for tickers: {tickers}, from {start_date} to {end_date}")
 
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     async with aiohttp.ClientSession() as session:
@@ -653,16 +667,68 @@ async def populate_news():
 
         responses = await asyncio.gather(*tasks)
 
-        total_articles = sum(len(articles) for articles in responses)
+        logging.info(f"Received {len(responses)} responses from fetch_news")
+
+        all_article_ids = {str(article['id'])
+                           for response in responses for article in response}
+        logging.info(f"Total unique article IDs: {len(all_article_ids)}")
+
+        # Fetch existing article IDs and their associated tickers from the database in chunks
+        chunk_size = 1000
+        existing_article_data = {}
+
+        for i in range(0, len(all_article_ids), chunk_size):
+            chunk = list(all_article_ids)[i:i+chunk_size]
+            chunk_results = db.session.query(News.id, NewsSecurities.ticker).join(
+                NewsSecurities).filter(News.id.in_(chunk)).all()
+            for news_id, ticker in chunk_results:
+                if news_id not in existing_article_data:
+                    existing_article_data[news_id] = set()
+                existing_article_data[news_id].add(ticker)
+
+        logging.info(
+            f"Existing articles in database: {len(existing_article_data)}")
+
+        articles_to_fetch = set()
+        news_securities_to_add = set()
+
+        for response in responses:
+            for article in response:
+                article_id = str(article['id'])
+                article_tickers = set(article['related'].split(','))
+
+                if article_id not in existing_article_data:
+                    articles_to_fetch.add(article_id)
+                    for ticker in article_tickers:
+                        news_securities_to_add.add((article_id, ticker))
+                else:
+                    new_tickers = article_tickers - \
+                        existing_article_data[article_id]
+                    for ticker in new_tickers:
+                        news_securities_to_add.add((article_id, ticker))
+
+        logging.info(f"Articles to fetch: {len(articles_to_fetch)}")
+        logging.info(
+            f"New news-securities associations to add: {len(news_securities_to_add)}")
+
+        total_articles = len(articles_to_fetch)
         progress_data = {'articles_processed': 0,
                          'total_articles': total_articles}
 
         contents = []
         queue = asyncio.Queue()
 
-        for response in responses:
-            for article in response:
-                await queue.put(article)
+        for article_id in articles_to_fetch:
+            for response in responses:
+                for article in response:
+                    if str(article['id']) == article_id:
+                        await queue.put(article)
+                        break
+                else:
+                    continue
+                break
+
+        logging.info(f"Queued {queue.qsize()} articles for content fetching")
 
         workers = [asyncio.create_task(worker(
             session, queue, semaphore, contents, progress_data)) for _ in range(MAX_WORKERS)]
@@ -672,29 +738,12 @@ async def populate_news():
         for w in workers:
             w.cancel()
 
-        all_article_ids = {str(article['id'])
-                           for response in responses for article in response}
-        all_tickers = set(tickers)
-
-        existing_tickers = Securities.query.filter(
-            Securities.ticker.in_(all_tickers)).all()
-        ticker_to_security = {
-            ticker.ticker: ticker for ticker in existing_tickers}
+        logging.info(f"Fetched content for {len(contents)} articles")
 
         # Process articles in batches
         batch_size = 1000
-        for i in range(0, len(all_article_ids), batch_size):
-            batch_ids = list(all_article_ids)[i:i+batch_size]
-
-            existing_articles = News.query.filter(
-                News.id.in_(batch_ids)).all()
-            existing_news_securities = NewsSecurities.query.filter(
-                NewsSecurities.news_id.in_(batch_ids)).all()
-
-            existing_article_ids = {str(article.id)
-                                    for article in existing_articles}
-            existing_news_securities_set = {
-                (str(ns.news_id), ns.ticker) for ns in existing_news_securities}
+        for i in range(0, len(articles_to_fetch), batch_size):
+            batch_ids = list(articles_to_fetch)[i:i+batch_size]
 
             for article, content, author, publisher in contents:
                 if str(article['id']) in batch_ids:
@@ -703,36 +752,37 @@ async def populate_news():
                     exch_time = published_utc.astimezone(timezone(
                         'US/Eastern')).replace(tzinfo=None).replace(hour=0, minute=0, second=0, microsecond=0)
 
-                    if str(article['id']) not in existing_article_ids:
-                        news_entry = News(
-                            id=str(article['id']),
-                            exch_time=exch_time,
-                            published_utc=published_utc.replace(tzinfo=None),
-                            publisher_name=publisher or None,
-                            title=article['headline'],
-                            author=author or None,
-                            article_url=article['url'],
-                            content=content
-                        )
-                        db.session.add(news_entry)
-                        existing_article_ids.add(str(article['id']))
+                    news_entry = News(
+                        id=str(article['id']),
+                        exch_time=exch_time,
+                        published_utc=published_utc.replace(tzinfo=None),
+                        publisher_name=publisher or None,
+                        title=article['headline'],
+                        author=author or None,
+                        article_url=article['url'],
+                        content=content
+                    )
+                    db.session.add(news_entry)
 
-                    for ticker in article['related'].split(','):
-                        if ticker in ticker_to_security and (str(article['id']), ticker) not in existing_news_securities_set:
-                            news_security_entry = NewsSecurities(
-                                news_id=str(article['id']),
-                                ticker=ticker,
-                                sentiment=None
-                            )
-                            db.session.add(news_security_entry)
-                            existing_news_securities_set.add(
-                                (str(article['id']), ticker))
+            db.session.commit()
 
-            try:
-                db.session.commit()
-            except IntegrityError as e:
-                db.session.rollback()
-                return jsonify({'status': 'error', 'message': f'Database integrity error occurred: {str(e)}'}), 500
+        logging.info(
+            f"Inserted {len(articles_to_fetch)} new articles into the database")
+
+        # Convert set to list for batch processing
+        news_securities_list = list(news_securities_to_add)
+
+        # Add new NewsSecurities entries
+        for i in range(0, len(news_securities_list), batch_size):
+            batch = news_securities_list[i:i+batch_size]
+            db.session.bulk_insert_mappings(NewsSecurities, [
+                {'news_id': news_id, 'ticker': ticker, 'sentiment': None}
+                for news_id, ticker in batch
+            ])
+            db.session.commit()
+
+        logging.info(
+            f"Inserted {len(news_securities_list)} new news-securities associations")
 
     return jsonify({'status': 'success', 'message': 'News data updated.'})
 
@@ -863,6 +913,180 @@ async def update_sentiment_scores():
                 await asyncio.sleep(15)
 
     return jsonify({'status': 'success', 'message': 'Sentiment scores updated.'})
+
+
+@main.route('/update_impact_scores', methods=['POST'])
+async def update_impact_scores():
+    data = request.json
+    tickers = data.get('tickers', [])
+    start_date = datetime.strptime(data.get('start_date', (datetime.now(
+    ) - timedelta(days=30)).strftime('%Y-%m-%d')), '%Y-%m-%d')
+    end_date = datetime.strptime(
+        data.get('end_date', datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d')
+
+    end_date = datetime.combine(end_date, datetime.max.time())
+
+    # Fetch all relevant news_securities in batches
+    batch_size = 1000
+    offset = 0
+    all_news_securities = []
+
+    while True:
+        batch = db.session.query(NewsSecurities).join(News).filter(
+            NewsSecurities.ticker.in_(tickers),
+            News.published_utc.between(start_date, end_date),
+            NewsSecurities.impact.is_(None)
+        ).order_by(News.published_utc).offset(offset).limit(batch_size).all()
+
+        if not batch:
+            break
+
+        all_news_securities.extend(batch)
+        offset += batch_size
+
+        if len(batch) < batch_size:
+            break
+
+    if not all_news_securities:
+        return jsonify({'status': 'success', 'message': 'No data to process.'})
+
+    # Process news in smaller batches
+    processing_batch_size = 500
+    for i in range(0, len(all_news_securities), processing_batch_size):
+        batch_news_securities = all_news_securities[i:i+processing_batch_size]
+        news_ids = [ns.news_id for ns in batch_news_securities]
+
+        news_contents = News.query.filter(News.id.in_(news_ids)).all()
+        content_dict = {news.id: news.content for news in news_contents}
+
+        batch_data = {
+            "batch": [
+                {
+                    "custom_id": f"request|:|{ns.news_id}|:|{ns.ticker}",
+                    "method": "POST",
+                    "url": "/v1/chat/completions",
+                    "body": {
+                        "model": "gpt-4o-mini",
+                        "messages": [{
+                            "role": "system",
+                            "content": "You are an AI that evaluates the impact of news on stock prices."
+                        }, {
+                            "role": "user",
+                            "content": f"""Analyze the following news article about {ns.ticker} and evaluate its potential market impact. Score from 0-100 based on these criteria:
+
+                                0-20: Minimal to no market impact
+                                - Routine business updates
+                                - Already priced in information 
+                                - Minor operational updates
+                                - Restatements of known information
+
+                                21-40: Low market impact
+                                - Small contract wins
+                                - Minor earnings beats/misses
+                                - Regular product updates
+                                - Common industry developments
+
+                                41-60: Moderate market impact
+                                - Significant contract wins
+                                - Notable earnings surprises
+                                - Important partnership announcements
+                                - Material operational changes
+                                - Key executive changes
+
+                                61-80: High market impact
+                                - Major strategic shifts
+                                - Substantial M&A activity
+                                - Unexpected leadership changes
+                                - Significant regulatory developments
+                                - Major product breakthroughs
+                                - Substantial market share changes
+
+                                81-100: Transformative impact
+                                - Company-altering mergers/acquisitions
+                                - Bankruptcy or financial crisis
+                                - Revolutionary technological breakthroughs
+                                - Major regulatory actions/approvals
+                                - Fundamental business model changes
+
+                                Consider these factors:
+                                1. Materiality: Financial significance relative to company size
+                                2. Novelty: How unexpected is this news?
+                                3. Timing: Near-term vs long-term impact
+                                4. Market conditions: Current sector and macro context
+                                5. Structural change: Does this fundamentally alter the business?
+
+                                ONLY RESPOND WITH A NUMERICAL SCORE (0-100).
+
+                                Article text:
+                                {content_dict.get(ns.news_id, '')}"""
+                        }],
+                        "temperature": 0,
+                        "seed": 0
+                    }
+                } for ns in batch_news_securities if ns.news_id in content_dict
+            ]
+        }
+
+        response = requests.post(f"{BCOMP_BASE_URL}/bproc", json=batch_data)
+        response_data = response.json()
+
+        if 'job_id' not in response_data:
+            continue
+
+        job_id = response_data['job_id']
+        logger.info(f"Job ID: {job_id}")
+
+        while True:
+            status_response = requests.get(
+                f"{BCOMP_BASE_URL}/bstatus/{job_id}")
+            status_data = status_response.json()
+
+            if status_data['state'] == 'SUCCESS':
+                impact_scores = {}
+                for result in status_data['result']:
+                    if result['error'] is None and result['response']['status_code'] == 200:
+                        impact_text = result['response']['body']['choices'][0]['message']['content'].strip(
+                        )
+                        match = re.search(r'\b\d+\b', impact_text)
+                        if match:
+                            impact_score = int(match.group())
+                            if 0 <= impact_score <= 100:
+                                custom_id = result['custom_id']
+                                impact_scores[custom_id] = impact_score
+
+                # Update impact scores in smaller batches
+                update_batch_size = 500
+                for j in range(0, len(batch_news_securities), update_batch_size):
+                    update_batch = batch_news_securities[j:j+update_batch_size]
+                    bulk_update_data = []
+                    for ns in update_batch:
+                        custom_id = f"request|:|{ns.news_id}|:|{ns.ticker}"
+                        if custom_id in impact_scores:
+                            bulk_update_data.append({
+                                'news_id': ns.news_id,
+                                'ticker': ns.ticker,
+                                'impact': impact_scores[custom_id]
+                            })
+
+                    if bulk_update_data:
+                        try:
+                            db.session.bulk_update_mappings(
+                                NewsSecurities, bulk_update_data)
+                            db.session.commit()
+                        except IntegrityError as e:
+                            db.session.rollback()
+                            logger.error(
+                                f"Database integrity error occurred: {str(e)}")
+
+                break
+            elif status_data['state'] == 'FAILURE':
+                logger.error('Failed to retrieve impact scores.')
+                break
+            else:  # PENDING
+                # Wait for 15 seconds before polling again
+                await asyncio.sleep(15)
+
+    return jsonify({'status': 'success', 'message': 'Impact scores updated.'})
 
 
 @main.route('/update/tickers', methods=['GET'])

@@ -1,0 +1,14 @@
+{
+    "equal_weighted": {
+        "Annual Return": 0.25563397190334847,
+        "Annual Volatility": 0.08937517031377713,
+        "Sharpe Ratio": 2.8602347945841355,
+        "Max Drawdown": -0.07099308803743876
+    },
+    "inverse_vol_weighted": {
+        "Annual Return": 0.19557499131359468,
+        "Annual Volatility": 0.06368586053067421,
+        "Sharpe Ratio": 3.0709326950115754,
+        "Max Drawdown": -0.055306688183068387
+    }
+}

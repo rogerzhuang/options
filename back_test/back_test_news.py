@@ -27,9 +27,12 @@ def get_sentiment_scores(tickers, start_date, end_date, session):
         .join(News, News.id == NewsSecurities.news_id)
         .filter(News.exch_time.between(start_date, end_date))
         .filter(NewsSecurities.ticker.in_(tickers))
+        .filter(News.content.isnot(None))  # Ignore news with null content
+        # Filter news with content length less than 1000 characters
         # .filter(News.author == 'Zacks Equity Research')
         # .filter(News.publisher_name == 'Yahoo')
         # .filter(NewsSecurities.ticker.not_in(['PXD']))
+        .filter(NewsSecurities.impact >= 70)
         .group_by(NewsSecurities.ticker)
         .all())
     return {score.ticker: score.average_sentiment for score in sentiment_scores}
@@ -53,19 +56,20 @@ def get_stock_prices_on_day(tickers, day):
             'start_date': str_day,
             'end_date': str_day
         })
-        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+        response.raise_for_status()
 
         data = response.json()
         if not data:
             raise ValueError("No data returned from the server.")
 
-        return data
+        # Filter out tickers with no data
+        return {ticker: price for ticker, price in data.items() if price}
     except requests.exceptions.RequestException as e:
         print(f"An error occurred while fetching stock prices: {e}")
-        return None
+        return {}
     except ValueError as e:
         print(f"An error occurred: {e}")
-        return None
+        return {}
 
 
 def execute_trades(trade_info, trade_day):
@@ -79,39 +83,77 @@ def execute_trades(trade_info, trade_day):
     long_prices = get_stock_prices_on_day(long_tickers, trade_day)
     short_prices = get_stock_prices_on_day(short_tickers, trade_day)
 
+    # Filter out tickers with no price data
+    valid_long_tickers = [
+        ticker for ticker in long_tickers if ticker in long_prices]
+    valid_short_tickers = [
+        ticker for ticker in short_tickers if ticker in short_prices]
+
+    if len(valid_long_tickers) != len(long_tickers) or len(valid_short_tickers) != len(short_tickers):
+        print(f"Warning: Some tickers were excluded due to missing price data.")
+        print(
+            f"Excluded long tickers: {set(long_tickers) - set(valid_long_tickers)}")
+        print(
+            f"Excluded short tickers: {set(short_tickers) - set(valid_short_tickers)}")
+
     return {
-        "long": {ticker: long_prices[ticker] for ticker in long_tickers},
-        "short": {ticker: short_prices[ticker] for ticker in short_tickers},
+        "long": {ticker: long_prices[ticker] for ticker in valid_long_tickers},
+        "short": {ticker: short_prices[ticker] for ticker in valid_short_tickers},
         "trade_day": trade_day
     }
 
 
 def calculate_returns(portfolio, trade_day, unwind_day):
-    # Formatting the trade and unwind days
     trade_day_str = datetime.strftime(trade_day, '%Y-%m-%d')
     unwind_day_str = datetime.strftime(unwind_day, '%Y-%m-%d')
 
-    # Get stock prices on the unwind day
     long_prices_end = get_stock_prices_on_day(
         list(portfolio["long"].keys()), unwind_day)
     short_prices_end = get_stock_prices_on_day(
         list(portfolio["short"].keys()), unwind_day)
 
-    if long_prices_end is None or short_prices_end is None:
-        print("Error: Failed to fetch stock prices.")
-        return None
+    def calculate_position_return(start_price, end_price, is_long, ticker):
+        if start_price is None or end_price is None:
+            print(
+                f"Warning: Price not available for {'long' if is_long else 'short'} position of {ticker}. Setting return to 0.")
+            return 0
+        return (end_price - start_price) / start_price if is_long else (start_price - end_price) / start_price
 
-    # Calculate returns for long and short positions
-    long_returns = sum((long_prices_end[ticker][unwind_day_str]['close_adj'] - portfolio["long"][ticker][trade_day_str]['close_adj']) / portfolio["long"][ticker][trade_day_str]['close_adj']
-                       for ticker in portfolio["long"]) / len(portfolio["long"])
-    short_returns = sum((portfolio["short"][ticker][trade_day_str]['close_adj'] - short_prices_end[ticker][unwind_day_str]['close_adj']) / portfolio["short"][ticker][trade_day_str]['close_adj']
-                        for ticker in portfolio["short"]) / len(portfolio["short"])
-    print(f"individual long returns: {[((long_prices_end[ticker][unwind_day_str]['close_adj'] - portfolio['long'][ticker][trade_day_str]['close_adj']) / portfolio['long'][ticker][trade_day_str]['close_adj']) for ticker in portfolio['long']]}")
-    print(f"individual short returns: {[((portfolio['short'][ticker][trade_day_str]['close_adj'] - short_prices_end[ticker][unwind_day_str]['close_adj']) / portfolio['short'][ticker][trade_day_str]['close_adj']) for ticker in portfolio['short']]}")
+    long_returns = []
+    short_returns = []
+
+    for ticker in portfolio["long"]:
+        start_price = portfolio["long"].get(ticker, {}).get(
+            trade_day_str, {}).get('close_adj')
+        end_price = long_prices_end.get(ticker, {}).get(
+            unwind_day_str, {}).get('close_adj')
+        long_returns.append(calculate_position_return(
+            start_price, end_price, True, ticker))
+
+    for ticker in portfolio["short"]:
+        start_price = portfolio["short"].get(ticker, {}).get(
+            trade_day_str, {}).get('close_adj')
+        end_price = short_prices_end.get(ticker, {}).get(
+            unwind_day_str, {}).get('close_adj')
+        short_returns.append(calculate_position_return(
+            start_price, end_price, False, ticker))
+
+    avg_long_return = sum(long_returns) / \
+        len(long_returns) if long_returns else 0
+    avg_short_return = sum(short_returns) / \
+        len(short_returns) if short_returns else 0
+
+    print(f"Individual long returns: {[f'{r:.2%}' for r in long_returns]}")
+    print(f"Individual short returns: {[f'{r:.2%}' for r in short_returns]}")
     print(
-        f"Long returns: {long_returns:.2%}, Short returns: {short_returns:.2%}")
-    total_return = long_returns + short_returns
-    return total_return
+        f"Long returns: {avg_long_return:.2%}, Short returns: {avg_short_return:.2%}")
+
+    total_return = avg_long_return + avg_short_return
+    return {
+        'return': total_return,
+        'long_stocks': list(portfolio["long"].keys()),
+        'short_stocks': list(portfolio["short"].keys())
+    }
 
 
 def get_friday_of_week(date):
@@ -177,12 +219,15 @@ def backtest_sentiment_strategy(start_date, end_date, start_days_sentiment, end_
             unwind_week = trade_day + hold_days
             unwind_day = get_last_trading_day_of_week(unwind_week, valid_days)
             if unwind_day:
-                total_return = calculate_returns(
-                    portfolio, trade_day, unwind_day)
+                result = calculate_returns(portfolio, trade_day, unwind_day)
                 print(
-                    f"Unwinding on {unwind_day} with return {total_return:.2%}")
-                returns_list.append(
-                    {"date": unwind_day, "return": total_return})
+                    f"Unwinding on {unwind_day} with return {result['return']:.2%}")
+                returns_list.append({
+                    "date": unwind_day,
+                    "return": result['return'],
+                    "long_stocks": result['long_stocks'],
+                    "short_stocks": result['short_stocks']
+                })
             else:
                 print(f"No unwind day found for trade executed on {trade_day}")
         else:
@@ -245,5 +290,8 @@ if __name__ == '__main__':
             formatted_return = "N/A"
         else:
             formatted_return = f"{return_value:.2%}"
-        print(
-            f"Date: {ret['date'].strftime('%Y-%m-%d')}, Return: {formatted_return}")
+        num_stocks = len(ret.get('long_stocks', [])) + \
+            len(ret.get('short_stocks', []))
+        print(f"Date: {ret['date'].strftime('%Y-%m-%d')} | "
+              f"Return: {formatted_return} | "
+              f"Total Stocks: {num_stocks}")

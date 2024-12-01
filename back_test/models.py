@@ -84,6 +84,7 @@ class NewsSecurities(Base):
     ticker = Column(String(40), ForeignKey(
         'securities.ticker'), primary_key=True)
     sentiment = Column(Integer)  # Sentiment score column
+    impact = Column(Float)  # Impact score column
 
     # Relationships
     news = relationship('News', back_populates='tickers')

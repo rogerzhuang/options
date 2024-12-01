@@ -81,6 +81,7 @@ class NewsSecurities(db.Model):
     ticker = db.Column(db.String(40), db.ForeignKey(
         'securities.ticker'), primary_key=True)
     sentiment = db.Column(db.Integer)  # Sentiment score column
+    impact = db.Column(db.Float)  # Impact score column
 
     # Relationships
     news = db.relationship('News', back_populates='tickers')
